@@ -1,0 +1,68 @@
+from pathlib import Path
+from urllib.parse import urlparse
+
+from fastapi import UploadFile
+
+from app.config import get_settings
+
+
+def storage_root() -> Path:
+    return get_settings().storage_root
+
+
+def ensure_storage_dirs() -> None:
+    for directory in ("uploads", "segments", "outputs", "temp", "analysis"):
+        (storage_root() / directory).mkdir(parents=True, exist_ok=True)
+
+
+def asset_upload_path(asset_id: int, original_filename: str) -> Path:
+    suffix = Path(original_filename).suffix or ".mp4"
+    return storage_root() / "uploads" / f"asset-{asset_id}{suffix}"
+
+
+def filename_from_url(url: str) -> str:
+    path = urlparse(url).path
+    filename = Path(path).name
+    return filename or "remote-video.mp4"
+
+
+def asset_segments_dir(asset_id: int) -> Path:
+    path = storage_root() / "segments" / f"asset-{asset_id}"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def task_output_path(task_id: int) -> Path:
+    path = storage_root() / "outputs" / f"task-{task_id}.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def concat_list_path(task_id: int) -> Path:
+    path = storage_root() / "temp" / f"task-{task_id}-concat.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def task_card_path(task_id: int, kind: str) -> Path:
+    if kind not in {"intro", "outro"}:
+        raise ValueError(f"task_card_path kind must be intro or outro, got {kind!r}")
+    path = storage_root() / "temp" / f"task-{task_id}-{kind}.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def asset_analysis_dir(asset_id: int) -> Path:
+    path = storage_root() / "analysis" / f"asset-{asset_id}"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+async def save_upload_file(upload_file: UploadFile, destination: Path) -> int:
+    size = 0
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("wb") as output:
+        while chunk := await upload_file.read(1024 * 1024):
+            size += len(chunk)
+            output.write(chunk)
+    return size
