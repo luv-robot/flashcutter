@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flashcutter 试用用户使用说明</title>
+    <link rel="icon" type="image/svg+xml" href="/flashcutter-icon.svg" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --paper: #ffffff;
+        --ink: #1d2633;
+        --muted: #657282;
+        --line: #d9dee7;
+        --brand: #ef4444;
+        --brand-strong: #b91c1c;
+        --soft: #fff3ef;
+        --code-bg: #202733;
+        --code-ink: #eef4ff;
+        --shadow: 0 20px 60px rgba(22, 32, 45, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        font-size: 16px;
+        line-height: 1.72;
+      }
+
+      a {
+        color: var(--brand-strong);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .shell {
+        width: min(1180px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 32px 0 56px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 24px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .brand img {
+        width: 210px;
+        max-width: 62vw;
+        height: auto;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+
+      .toc {
+        position: sticky;
+        top: 24px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+        box-shadow: 0 10px 30px rgba(22, 32, 45, 0.06);
+        padding: 18px;
+      }
+
+      .toc h2 {
+        margin: 0 0 12px;
+        font-size: 16px;
+      }
+
+      .toc ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .toc li + li {
+        margin-top: 7px;
+      }
+
+      .toc a {
+        display: block;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .toc a:hover {
+        color: var(--brand-strong);
+      }
+
+      .document {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .title {
+        padding: 44px 52px 34px;
+        background: linear-gradient(180deg, #fff8f5 0%, #ffffff 100%);
+        border-bottom: 1px solid var(--line);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(30px, 5vw, 48px);
+        line-height: 1.16;
+        font-weight: 760;
+      }
+
+      .lede {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .content {
+        padding: 26px 52px 52px;
+      }
+
+      section {
+        padding: 22px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      section:last-child {
+        border-bottom: 0;
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      .note {
+        margin: 18px 0;
+        padding: 14px 16px;
+        border-left: 4px solid var(--brand);
+        border-radius: 6px;
+        background: var(--soft);
+        color: #5f231d;
+      }
+
+      pre {
+        margin: 16px 0;
+        padding: 16px 18px;
+        overflow-x: auto;
+        border-radius: 8px;
+        background: var(--code-bg);
+        color: var(--code-ink);
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", monospace;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .footer {
+        color: var(--muted);
+        font-size: 14px;
+        padding-top: 22px;
+      }
+
+      @media (max-width: 900px) {
+        .shell {
+          width: min(100% - 28px, 760px);
+          padding-top: 20px;
+        }
+
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .meta {
+          white-space: normal;
+        }
+
+        .layout {
+          display: block;
+        }
+
+        .toc {
+          position: static;
+          margin-bottom: 18px;
+        }
+
+        .toc ol {
+          columns: 2;
+          column-gap: 22px;
+        }
+
+        .document {
+          box-shadow: 0 12px 36px rgba(22, 32, 45, 0.1);
+        }
+
+        .title,
+        .content {
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+      }
+
+      @media (max-width: 560px) {
+        body {
+          font-size: 15px;
+        }
+
+        .shell {
+          width: 100%;
+          padding: 0;
+        }
+
+        .topbar {
+          padding: 18px 16px 0;
+        }
+
+        .toc {
+          margin: 16px;
+        }
+
+        .toc ol {
+          columns: 1;
+        }
+
+        .document {
+          border-left: 0;
+          border-right: 0;
+          border-radius: 0;
+        }
+
+        .title {
+          padding: 30px 18px 24px;
+        }
+
+        .content {
+          padding: 16px 18px 36px;
+        }
+
+        h2 {
+          font-size: 21px;
+        }
+      }
+
+      @media print {
+        body {
+          background: #ffffff;
+          color: #000000;
+        }
+
+        .shell {
+          width: 100%;
+          padding: 0;
+        }
+
+        .topbar,
+        .toc {
+          display: none;
+        }
+
+        .document {
+          border: 0;
+          box-shadow: none;
+        }
+
+        .title,
+        .content {
+          padding: 0;
+        }
+
+        section {
+          break-inside: avoid;
+        }
+
+        pre,
+        .note {
+          border: 1px solid #cccccc;
+          background: #ffffff;
+          color: #000000;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar" aria-label="页面信息">
+        <a class="brand" href="/" aria-label="Flashcutter">
+          <img src="/flashcutter-logo-horizontal.svg" alt="Flashcutter" />
+        </a>
+        <div class="meta">试用用户手册 · 更新日期：2026-06-02</div>
+      </header>
+
+      <div class="layout">
+        <nav class="toc" aria-label="目录">
+          <h2>目录</h2>
+          <ol>
+            <li><a href="#what">1. Flashcutter 是做什么的</a></li>
+            <li><a href="#prepare">2. 使用前准备</a></li>
+            <li><a href="#login">3. 登录</a></li>
+            <li><a href="#upload">4. 上传原始视频</a></li>
+            <li><a href="#music">5. 准备配乐</a></li>
+            <li><a href="#clips">6. 准备视频片段</a></li>
+            <li><a href="#templates">7. 查看和调整模板</a></li>
+            <li><a href="#create">8. 创建一批广告变体</a></li>
+            <li><a href="#queue">9. 查看队列和失败任务</a></li>
+            <li><a href="#review">10. 审核生成结果</a></li>
+            <li><a href="#rerun">11. 标记整个批次需要再生产</a></li>
+            <li><a href="#download">12. 打包下载过审视频</a></li>
+            <li><a href="#ai-clone">13. AI 仿制生成</a></li>
+            <li><a href="#trial-order">14. 建议的试用顺序</a></li>
+            <li><a href="#feedback">15. 反馈时请尽量说明</a></li>
+          </ol>
+        </nav>
+
+        <article class="document">
+          <div class="title">
+            <h1>Flashcutter 试用用户使用说明</h1>
+            <p class="lede">
+              这份说明给试用用户使用，不解释系统架构和技术原理，只说明日常怎么操作。
+            </p>
+          </div>
+
+          <div class="content">
+            <section id="what">
+              <h2>1. Flashcutter 是做什么的</h2>
+              <p>
+                Flashcutter 用来把一条已经授权使用的原始广告视频，批量做成多个短视频广告变体。
+              </p>
+              <p>你可以把它理解成一个广告视频生产工作台：</p>
+              <pre><code>上传原始视频
+选择修改方法
+批量生成变体
+人工审核
+下载可用成片</code></pre>
+              <p>
+                Flashcutter 不是通用剪辑软件，也不是投放平台。现阶段它主要帮助你更快做出一批可检查、可复盘、可交付的广告素材。
+              </p>
+            </section>
+
+            <section id="prepare">
+              <h2>2. 使用前准备</h2>
+              <p>请先准备：</p>
+              <pre><code>1. 已确认可以使用的原始视频。
+2. 需要测试的广告方向或素材需求。
+3. 可选：自己的配乐文件。
+4. 可选：可重复使用的视频片段，例如开场、结尾、产品特写。</code></pre>
+              <p class="note">
+                重要：素材授权请在上传前确认。Flashcutter 不负责判断某条素材是否可商用。
+              </p>
+            </section>
+
+            <section id="login">
+              <h2>3. 登录</h2>
+              <p>打开试用地址后，用分配给你的手机号和密码登录。</p>
+              <p>
+                如果需要修改密码，可以在左侧用户区域展开账号操作，输入当前密码和新密码后提交。
+              </p>
+            </section>
+
+            <section id="upload">
+              <h2>4. 上传原始视频</h2>
+              <p>进入「素材」页面。</p>
+              <p>你可以：</p>
+              <pre><code>上传本地视频
+或导入视频 URL</code></pre>
+              <p>
+                上传后的原始视频会作为后续生产广告变体的种子视频。建议文件命名能让人看懂，例如：
+              </p>
+              <pre><code>奶茶新品-窗边实拍-竖版.mp4</code></pre>
+              <p>这样审核和下载时更容易识别。</p>
+            </section>
+
+            <section id="music">
+              <h2>5. 准备配乐</h2>
+              <p>进入「配乐库」页面。</p>
+              <p>配乐分两类：</p>
+              <pre><code>系统公用库：系统预置，所有试用用户可见。
+我的私有库：你自己上传，只给当前账号使用。</code></pre>
+              <p>你可以先试听系统配乐。如果需要使用自己的音乐，上传到私有库即可。</p>
+              <p>
+                当前试用版本的规则很简单：模板选择了配乐后，生成视频会用这首配乐替换原视频声音。
+              </p>
+            </section>
+
+            <section id="clips">
+              <h2>6. 准备视频片段</h2>
+              <p>进入「视频片段」页面。</p>
+              <p>这里放可以重复使用的短视频片段，例如：</p>
+              <pre><code>开场 Hook
+结尾 CTA
+产品特写
+氛围 B-roll
+反应镜头</code></pre>
+              <p>
+                你可以上传自己的片段，并填写标题、类型、标签和说明。后续 AI 仿制生成的片段也会进入这里，和手动上传的片段一起管理。
+              </p>
+            </section>
+
+            <section id="templates">
+              <h2>7. 查看和调整模板</h2>
+              <p>进入「模板」页面。</p>
+              <p>模板可以理解成“视频修改方法”，例如：</p>
+              <pre><code>快速开场 + 证据展示
+静音字幕版
+产品细节特写
+开箱步骤
+前后对比</code></pre>
+              <p>内置模板不能直接覆盖。你可以基于内置模板保存一个自己的副本，再修改。</p>
+              <p>模板里常见设置包括：</p>
+              <pre><code>画面比例和尺寸
+剪辑节奏
+画面叠字
+配乐
+画面风格
+左右镜像
+转场和质感
+审核重点</code></pre>
+              <p>
+                如果不确定某个模板是否合适，建议先用一条短视频跑少量变体，再看审核结果。
+              </p>
+            </section>
+
+            <section id="create">
+              <h2>8. 创建一批广告变体</h2>
+              <p>进入「变体生成」或生产相关页面。</p>
+              <p>基本流程：</p>
+              <pre><code>1. 选择一个原始视频。
+2. 选择一个或多个模板。
+3. 检查本次生产设置。
+4. 创建任务，或创建任务并加入渲染队列。</code></pre>
+              <p>只创建任务：先把任务列出来，稍后再手动运行。</p>
+              <p>创建并加入渲染队列：立即排队开始生成视频。</p>
+              <p>建议试用时先选择 2-3 个模板，确认效果和速度后再扩大批量。</p>
+            </section>
+
+            <section id="queue">
+              <h2>9. 查看队列和失败任务</h2>
+              <p>进入「队列」或「任务」页面。</p>
+              <p>这里可以看到：</p>
+              <pre><code>正在排队的任务
+正在渲染的任务
+已完成任务
+失败任务和失败原因</code></pre>
+              <p>
+                失败任务不会进入审核页。需要先在队列里查看原因，再决定是否重试或调整模板。
+              </p>
+            </section>
+
+            <section id="review">
+              <h2>10. 审核生成结果</h2>
+              <p>进入「审核」页面。</p>
+              <p>审核页按生产批次组织结果。一个批次通常对应：</p>
+              <pre><code>一次原始视频
+一组模板
+一批生成出来的广告变体</code></pre>
+              <p>批次名称会尽量包含时间和原始素材名，方便你识别。</p>
+              <p>你可以逐条查看变体，并做决定：</p>
+              <pre><code>通过：这个视频可以交付或进入后续投放准备。
+要求修改：这个方向可用，但还需要改。
+拒绝：这个视频不适合继续使用。
+丢弃：不进入后续处理。</code></pre>
+              <p>如果选择「要求修改」，请尽量写清楚要改什么，例如：</p>
+              <pre><code>开场文字太弱，需要更直接。
+产品出现太晚。
+配乐不适合，换成更轻快的。
+画面裁切挡住了主体。</code></pre>
+              <p>这些反馈后续会作为再生产的输入。</p>
+            </section>
+
+            <section id="rerun">
+              <h2>11. 标记整个批次需要再生产</h2>
+              <p>有时单条视频的问题不大，但整批都需要重新来一轮，例如：</p>
+              <pre><code>所有视频节奏都太慢。
+配乐整体不适合。
+叠字方向需要统一重写。
+模板选错了。</code></pre>
+              <p>
+                这时可以把整个批次标记为需要再生产。
+              </p>
+              <p>
+                系统会保留原批次和后续修改轮次的关系，方便之后追溯“为什么改、改了几轮”。
+              </p>
+            </section>
+
+            <section id="download">
+              <h2>12. 打包下载过审视频</h2>
+              <p>当一个批次里已经有通过审核的视频，可以在审核页使用「打包下载」。</p>
+              <p>打包内容包括：</p>
+              <pre><code>原始种子视频
+这个批次里所有已通过的视频</code></pre>
+              <p>
+                下载前系统会提示预计文件大小。文件较大时请确认网络和磁盘空间足够。
+              </p>
+              <p>
+                这个 zip 包可以作为连接广告平台之前的过渡交付物，直接发给合作方或投放同事检查。
+              </p>
+            </section>
+
+            <section id="ai-clone">
+              <h2>13. AI 仿制生成</h2>
+              <p>AI 相关功能是独立实验能力，不是当前主生产流程的必经步骤。</p>
+              <p>
+                它的目标是：用一张参考图或一段参考视频，生成一个相似风格的新短片段，然后进入「视频片段」库。
+              </p>
+              <p>
+                现阶段请把它看作补充素材的方法，而不是自动生成完整广告的方法。
+              </p>
+            </section>
+
+            <section id="trial-order">
+              <h2>14. 建议的试用顺序</h2>
+              <p>第一次试用建议按这个顺序：</p>
+              <pre><code>1. 登录。
+2. 上传 1 条已授权原始视频。
+3. 试听系统配乐。
+4. 选择 2-3 个模板生成变体。
+5. 在队列页确认任务完成。
+6. 在审核页逐条审核。
+7. 通过 1-2 条视频。
+8. 打包下载。
+9. 记录需要修改的问题。</code></pre>
+              <p>第二次试用再尝试：</p>
+              <pre><code>上传自己的配乐
+上传自己的视频片段
+修改模板副本
+标记批次需要再生产</code></pre>
+            </section>
+
+            <section id="feedback">
+              <h2>15. 反馈时请尽量说明</h2>
+              <p>如果遇到问题，请尽量记录：</p>
+              <pre><code>发生在哪个页面
+原始视频名称
+批次名称或任务编号
+你点击了什么
+你期待看到什么
+实际发生了什么
+是否有错误提示</code></pre>
+              <p>越具体，越容易定位和修复。</p>
+              <p class="footer">
+                本页面由 Markdown 用户手册转换生成，可直接在浏览器中查看或打印。
+              </p>
+            </section>
+          </div>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

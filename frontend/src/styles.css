@@ -216,7 +216,8 @@ main {
 .panel-header p,
 .template-item p,
 .empty-state,
-.muted-copy {
+.muted-copy,
+.rights-note {
   margin: 0.2rem 0 0;
   color: var(--muted);
 }
@@ -745,6 +746,11 @@ tbody tr:hover,
   background: var(--surface-muted);
 }
 
+.rights-note {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 .batch-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1089,8 +1095,35 @@ dd {
   margin-top: 1rem;
 }
 
-.music-section h3 {
-  margin: 0 0 0.6rem;
+.section-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.6rem;
+}
+
+.section-title-row h3,
+.section-title-row p {
+  margin: 0;
+}
+
+.section-title-row p {
+  margin-top: 0.16rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.section-title-row > strong {
+  min-width: 2.2rem;
+  border: 1px solid #d6e2ea;
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.78rem;
+  text-align: center;
 }
 
 .music-list {
@@ -1384,6 +1417,13 @@ dd {
   color: var(--muted);
 }
 
+.auth-help {
+  border: 1px solid #d8e2ec;
+  border-radius: 8px;
+  padding: 0.68rem;
+  background: #f8fafc;
+}
+
 .user-block {
   display: grid;
   gap: 0.5rem;
@@ -1447,6 +1487,90 @@ dd {
 
 .workbench-stats {
   grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.trial-checklist {
+  margin-bottom: 0.85rem;
+}
+
+.checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.checklist-item {
+  display: grid;
+  grid-template-rows: auto minmax(5.2rem, 1fr) auto;
+  gap: 0.5rem;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.68rem;
+  background: #ffffff;
+}
+
+.checklist-item strong,
+.checklist-item p {
+  overflow-wrap: anywhere;
+}
+
+.checklist-item p {
+  margin: 0.22rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.checklist-status {
+  justify-self: start;
+  border: 1px solid #f3d68d;
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  background: #fff8e6;
+  color: var(--warning);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.checklist-item-done .checklist-status {
+  border-color: #b9e6ce;
+  background: #e3f6ec;
+  color: var(--success);
+}
+
+.empty-action-state {
+  display: grid;
+  justify-items: start;
+  gap: 0.55rem;
+  min-width: 0;
+  border: 1px dashed #d0d8e0;
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: #fbfcfd;
+}
+
+.empty-action-state .empty-state {
+  margin: 0;
+}
+
+.next-step-panel {
+  display: grid;
+  gap: 0.18rem;
+  margin-top: 0.75rem;
+  border: 1px solid #d8e2ec;
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: #f8fafc;
+}
+
+.next-step-panel strong {
+  color: var(--text);
+}
+
+.next-step-panel span {
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .workbench-grid {
@@ -1890,6 +2014,7 @@ dd {
   .production-grid,
   .review-layout,
   .stats-grid,
+  .checklist-grid,
   .metadata-grid,
   .batch-metrics,
   .workbench-grid,

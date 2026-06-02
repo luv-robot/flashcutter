@@ -45,7 +45,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (error) {
     throw new Error(
       error instanceof TypeError
-        ? '无法连接后端服务，请确认 127.0.0.1:8000 正在运行。'
+        ? '无法连接后端服务，请确认 Flashcutter 服务正在运行。'
         : '请求后端服务失败。'
     );
   }
@@ -55,12 +55,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `${response.status} ${response.statusText}`);
+    throw new Error(errorMessageFromResponse(text, response.status, response.statusText));
   }
   if (response.status === 204) {
     return undefined as T;
   }
   return response.json() as Promise<T>;
+}
+
+function errorMessageFromResponse(text: string, status: number, statusText: string): string {
+  if (!text) {
+    return `${status} ${statusText}`;
+  }
+  try {
+    const payload = JSON.parse(text) as { detail?: unknown };
+    if (typeof payload.detail === 'string') {
+      return payload.detail;
+    }
+  } catch {
+    // Fall through to the raw server message.
+  }
+  return text;
 }
 
 export function onAuthExpired(handler: () => void): () => void {

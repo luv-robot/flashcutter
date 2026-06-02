@@ -51,6 +51,7 @@ export function MusicLibraryPage() {
       <div className="panel">
         <div className="panel-kicker">私有库</div>
         <h2>上传配乐</h2>
+        <p className="muted-copy">上传前请确认配乐授权。模板选择配乐后，会用它替换原视频声音。</p>
         <form className="form-stack" onSubmit={uploadTrack}>
           <label>
             配乐标题
@@ -79,11 +80,24 @@ export function MusicLibraryPage() {
           <div>
             <div className="panel-kicker">配乐库</div>
             <h2>系统公用与我的私有配乐</h2>
+            <p>
+              系统公用库 {systemTracks.length} 首，我的私有库 {privateTracks.length} 首。先试听再在模板方法里选择。
+            </p>
           </div>
           <button className="secondary-action" onClick={refreshMusic}>刷新</button>
         </div>
-        <MusicSection title="系统公用库" tracks={systemTracks} emptyText="暂无系统配乐。" />
-        <MusicSection title="我的私有库" tracks={privateTracks} emptyText="暂无私有配乐。" />
+        <MusicSection
+          title="系统公用库"
+          helper="所有试用用户可见，当前 free 曲目保留来源和 CC BY 授权信息。"
+          tracks={systemTracks}
+          emptyText="暂无系统配乐。"
+        />
+        <MusicSection
+          title="我的私有库"
+          helper="只给当前账号使用，适合客户指定品牌音乐或内部授权素材。"
+          tracks={privateTracks}
+          emptyText="暂无私有配乐。上传一首后即可在模板里使用。"
+        />
       </div>
     </section>
   );
@@ -91,16 +105,24 @@ export function MusicLibraryPage() {
 
 function MusicSection({
   title,
+  helper,
   tracks,
   emptyText
 }: {
   title: string;
+  helper: string;
   tracks: MusicTrack[];
   emptyText: string;
 }) {
   return (
     <div className="music-section">
-      <h3>{title}</h3>
+      <div className="section-title-row">
+        <div>
+          <h3>{title}</h3>
+          <p>{helper}</p>
+        </div>
+        <strong>{tracks.length}</strong>
+      </div>
       {tracks.length === 0 ? (
         <p className="empty-state">{emptyText}</p>
       ) : (

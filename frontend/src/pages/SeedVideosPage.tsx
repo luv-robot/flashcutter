@@ -66,6 +66,9 @@ export function SeedVideosPage({
     <section className="workspace-grid">
       <div className="panel">
         <h2>素材导入</h2>
+        <p className="form-note">
+          上传前请确认原始视频已获得可商用授权。建议文件名包含产品、场景和画幅，方便后续审核和打包。
+        </p>
         <form onSubmit={uploadFile} className="form-stack">
           <label>
             本地视频素材
@@ -127,32 +130,40 @@ export function SeedVideosPage({
               </tr>
             </thead>
             <tbody>
-              {assets.map((asset) => (
-                <tr
-                  key={asset.id}
-                  className={asset.id === selectedAssetId ? 'selected-row' : ''}
-                  onClick={() => onSelectAsset(asset.id)}
-                >
-                  <td>{asset.id}</td>
-                  <td>{asset.original_filename}</td>
-                  <td>
-                    <StatusBadge value={asset.status} />
-                  </td>
-                  <td>{new Date(asset.created_at).toLocaleString()}</td>
-                  <td>
-                    <button
-                      className="secondary-action"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void detectText(asset.id);
-                      }}
-                      disabled={detectingAssetId === asset.id || asset.status !== 'ready'}
-                    >
-                      {detectingAssetId === asset.id ? '检测中...' : '检测文字区域'}
-                    </button>
+              {assets.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>
+                    <p className="empty-state">暂无种子视频。先上传一条已授权原始视频，再创建生产批次。</p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                assets.map((asset) => (
+                  <tr
+                    key={asset.id}
+                    className={asset.id === selectedAssetId ? 'selected-row' : ''}
+                    onClick={() => onSelectAsset(asset.id)}
+                  >
+                    <td>{asset.id}</td>
+                    <td>{asset.original_filename}</td>
+                    <td>
+                      <StatusBadge value={asset.status} />
+                    </td>
+                    <td>{new Date(asset.created_at).toLocaleString()}</td>
+                    <td>
+                      <button
+                        className="secondary-action"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void detectText(asset.id);
+                        }}
+                        disabled={detectingAssetId === asset.id || asset.status !== 'ready'}
+                      >
+                        {detectingAssetId === asset.id ? '检测中...' : '检测文字区域'}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

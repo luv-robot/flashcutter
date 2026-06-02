@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Asset } from '../api/types';
 import { CreativeReferencesPage } from './CreativeReferencesPage';
 import { MusicLibraryPage } from './MusicLibraryPage';
@@ -10,9 +10,10 @@ type AssetLibraryPageProps = {
   onRefresh: () => Promise<void>;
   selectedAssetId: number | null;
   onSelectAsset: (assetId: number) => void;
+  initialTab?: AssetTab;
 };
 
-type AssetTab = 'seed-videos' | 'video-clips' | 'images' | 'music' | 'references';
+export type AssetTab = 'seed-videos' | 'video-clips' | 'images' | 'music' | 'references';
 
 const tabs: Array<{ id: AssetTab; label: string }> = [
   { id: 'seed-videos', label: '种子视频' },
@@ -26,9 +27,14 @@ export function AssetLibraryPage({
   assets,
   onRefresh,
   selectedAssetId,
-  onSelectAsset
+  onSelectAsset,
+  initialTab = 'seed-videos'
 }: AssetLibraryPageProps) {
-  const [tab, setTab] = useState<AssetTab>('seed-videos');
+  const [tab, setTab] = useState<AssetTab>(initialTab);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   return (
     <section className="asset-library-page">
@@ -36,7 +42,8 @@ export function AssetLibraryPage({
         <div>
           <div className="panel-kicker">素材库</div>
           <h2>生产素材统一入口</h2>
-          <p>种子视频、可复用片段、配乐和组件参考按用途管理。</p>
+          <p>种子视频、可复用片段、图片素材、配乐和组件参考按用途管理。</p>
+          <p className="rights-note">上传前请确认素材已获得可商用授权，系统不会自动判断权利真实性。</p>
         </div>
         <div className="segmented-tabs" role="tablist" aria-label="素材类型">
           {tabs.map((item) => (
@@ -74,6 +81,10 @@ export function AssetLibraryPage({
             </button>
           </div>
           <p className="empty-state">图片素材接口尚未接入，当前可先在组件参考中沉淀图片框样式。</p>
+          <div className="next-step-panel">
+            <strong>下一步</strong>
+            <span>需要图片框、Logo 或贴片封面时，先在组件参考中记录来源和授权状态，待图片素材接口接入后再用于生产。</span>
+          </div>
         </section>
       )}
       {tab === 'music' && <MusicLibraryPage />}

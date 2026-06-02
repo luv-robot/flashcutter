@@ -14,6 +14,7 @@ import { ReviewOutputsPage } from './pages/ReviewOutputsPage';
 import { TasksPage } from './pages/TasksPage';
 import { TemplatesPage } from './pages/TemplatesPage';
 import { WorkbenchPage } from './pages/WorkbenchPage';
+import type { AssetTab } from './pages/AssetLibraryPage';
 
 type View = 'workbench' | 'assets' | 'templates' | 'production' | 'tasks' | 'review' | 'packages';
 
@@ -47,6 +48,7 @@ export default function App() {
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [showReviewReminder, setShowReviewReminder] = useState(false);
   const [productionDialogRequest, setProductionDialogRequest] = useState(0);
+  const [assetLibraryInitialTab, setAssetLibraryInitialTab] = useState<AssetTab>('seed-videos');
   const previousRunningCount = useRef(0);
 
   async function refreshAll() {
@@ -269,7 +271,16 @@ export default function App() {
                 }}
                 onOpenQueue={() => setView('tasks')}
                 onOpenReview={() => setView('review')}
-                onOpenAssets={() => setView('assets')}
+                onOpenAssets={() => {
+                  setAssetLibraryInitialTab('seed-videos');
+                  setView('assets');
+                }}
+                onOpenMusic={() => {
+                  setAssetLibraryInitialTab('music');
+                  setView('assets');
+                }}
+                onOpenTemplates={() => setView('templates')}
+                onOpenPackages={() => setView('packages')}
               />
             )}
             {view === 'assets' && (
@@ -278,6 +289,7 @@ export default function App() {
                 onRefresh={guardedRefresh}
                 selectedAssetId={selectedAssetId}
                 onSelectAsset={setSelectedAssetId}
+                initialTab={assetLibraryInitialTab}
               />
             )}
             {view === 'templates' && (
@@ -357,6 +369,7 @@ function AuthGate({
 }: {
   onAuthenticated: (token: string, user: AuthUser) => void;
 }) {
+  const allowRegistration = import.meta.env.VITE_ALLOW_REGISTRATION === 'true';
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -370,7 +383,7 @@ function AuthGate({
     setError('');
     try {
       const response =
-        mode === 'login'
+        mode === 'login' || !allowRegistration
           ? await api.login({ phone, password })
           : await api.register({
               phone,
@@ -379,7 +392,7 @@ function AuthGate({
             });
       onAuthenticated(response.access_token, response.user);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '认证失败');
+      setError(authErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -390,14 +403,14 @@ function AuthGate({
       <section className="auth-panel">
         <div>
           <h1>Flashcutter</h1>
-          <p>登录后管理素材、渲染队列和成片审核。</p>
+          <p>请使用分配的手机号和密码登录，登录后管理素材、渲染队列和成片审核。</p>
         </div>
         <form className="form-stack" onSubmit={submit}>
           <label>
             手机号
             <input value={phone} onChange={(event) => setPhone(event.target.value)} />
           </label>
-          {mode === 'register' && (
+          {allowRegistration && mode === 'register' && (
             <label>
               显示名称
               <input
@@ -416,16 +429,36 @@ function AuthGate({
           </label>
           {error && <p className="error-banner">{error}</p>}
           <button type="submit" disabled={busy}>
-            {busy ? '处理中...' : mode === 'login' ? '登录' : '注册'}
+            {busy ? '处理中...' : mode === 'login' || !allowRegistration ? '登录' : '注册'}
           </button>
         </form>
-        <button
-          type="button"
-          onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-        >
-          {mode === 'login' ? '创建账号' : '使用已有账号'}
-        </button>
+        {allowRegistration ? (
+          <button
+            type="button"
+            onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+          >
+            {mode === 'login' ? '创建账号' : '使用已有账号'}
+          </button>
+        ) : (
+          <p className="auth-help">
+            当前试用环境暂不开放自助注册。如需新账号，请联系管理员分配。
+          </p>
+        )}
       </section>
     </main>
   );
+}
+
+function authErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : '认证失败';
+  if (message.includes('Invalid phone number or password')) {
+    return '手机号或密码不正确，请检查分配账号信息。';
+  }
+  if (message.includes('Registration is disabled')) {
+    return '当前试用环境暂不开放自助注册，请使用分配账号登录。';
+  }
+  if (message.includes('Authentication required')) {
+    return '请先登录。';
+  }
+  return message;
 }

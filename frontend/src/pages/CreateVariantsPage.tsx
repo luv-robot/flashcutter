@@ -361,6 +361,7 @@ export function CreateVariantsPage({
           </div>
         </div>
         <p className="muted-copy">当前默认流程：一批视频套同一个模板。</p>
+        <p className="rights-note">只使用已确认可商用的原始视频、片段、图片和配乐；本次参数不会写回模板方法。</p>
       </div>
 
       {dialogOpen && (
@@ -433,7 +434,14 @@ export function CreateVariantsPage({
                     </button>
                   </aside>
                   <div className="asset-pick-grid">
-                    {filteredAssets.map((asset) => {
+                    {filteredAssets.length === 0 ? (
+                      <div className="empty-action-state">
+                        <p className="empty-state">没有可选视频。先上传或导入一条已授权原始视频。</p>
+                        <button className="secondary-action" type="button" onClick={onGoToAssets}>
+                          去素材库上传
+                        </button>
+                      </div>
+                    ) : filteredAssets.map((asset) => {
                       const checked = productionMode === 'one_asset_many_templates'
                         ? selectedAssetId === asset.id
                         : selectedAssetIds.includes(asset.id);
@@ -486,7 +494,14 @@ export function CreateVariantsPage({
                     </button>
                   </div>
                   <div className="template-method-grid">
-                    {filteredTemplates.map((template) => (
+                    {filteredTemplates.length === 0 ? (
+                      <div className="empty-action-state">
+                        <p className="empty-state">没有匹配的模板方法。清空筛选或先创建一个模板方法。</p>
+                        <button className="secondary-action" type="button" onClick={() => setTemplateFilter('')}>
+                          清空筛选
+                        </button>
+                      </div>
+                    ) : filteredTemplates.map((template) => (
                       <label key={template.id} className="template-method-card">
                         <input
                           type={productionMode === 'many_assets_one_template' ? 'radio' : 'checkbox'}
@@ -567,6 +582,9 @@ export function CreateVariantsPage({
                   </label>
                   <div className="one-time-note">
                     这些内容只保存到本次生产批次，不会写入模板方法。
+                  </div>
+                  <div className="one-time-note">
+                    如果模板选择配乐，生成视频会用所选配乐替换原视频声音；需要保留原声时请改用不替换配乐的模板。
                   </div>
                 </div>
               )}
