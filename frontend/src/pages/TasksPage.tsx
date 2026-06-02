@@ -8,6 +8,7 @@ type TasksPageProps = {
   tasks: GenerationTask[];
   templates: Template[];
   onRefresh: () => Promise<void>;
+  onCreateBatch: () => void;
 };
 
 const taskGroups = [
@@ -37,7 +38,7 @@ const taskGroups = [
   }
 ];
 
-export function TasksPage({ tasks, templates, onRefresh }: TasksPageProps) {
+export function TasksPage({ tasks, templates, onRefresh, onCreateBatch }: TasksPageProps) {
   const [runningTaskId, setRunningTaskId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [eventsByTask, setEventsByTask] = useState<Record<number, TaskEvent[]>>({});
@@ -137,9 +138,16 @@ export function TasksPage({ tasks, templates, onRefresh }: TasksPageProps) {
                         <div style={{ width: `${Math.max(0, Math.min(100, task.progress_percent ?? 0))}%` }} />
                       </div>
                       {task.error_message && (
-                        <div className="functional-error compact-error">
+                        <div className="functional-error compact-error failure-guidance">
                           <strong>任务失败</strong>
-                          <p>{task.error_message}</p>
+                          <dl className="failure-detail-grid">
+                            {failureGuidance(task.error_message).map((item) => (
+                              <div key={item.label}>
+                                <dt>{item.label}</dt>
+                                <dd>{item.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
                         </div>
                       )}
                       <div className="button-row">
@@ -164,6 +172,11 @@ export function TasksPage({ tasks, templates, onRefresh }: TasksPageProps) {
                         <button className="secondary-action" onClick={() => toggleEvents(task.id)}>
                           {eventsByTask[task.id] ? '收起详情' : '查看技术详情'}
                         </button>
+                        {task.status === 'failed' && (
+                          <button className="secondary-action" onClick={onCreateBatch}>
+                            回生产批次修正
+                          </button>
+                        )}
                       </div>
                       {eventsByTask[task.id] && (
                         <div className="event-log">
@@ -204,4 +217,54 @@ function nextActionText(status: string) {
     failed: '失败，可处理'
   };
   return labels[status] ?? '就绪';
+}
+
+function failureGuidance(message: string) {
+  const lower = message.toLowerCase();
+  if (lower.includes('rendered width') || lower.includes('rendered height')) {
+    return [
+      { label: '当前处境', value: '渲染已完成，但成片规格没有通过校验。' },
+      { label: '失败步骤', value: '输出尺寸校验' },
+      { label: '可读原因', value: '模板或本次输出规格与实际渲染出来的宽高不一致。' },
+      { label: '下一步动作', value: '回到生产批次改输出规格，或在模板方法里选择更合适的预设后重新预检。' }
+    ];
+  }
+  if (lower.includes('no ready segments') || lower.includes('ready segment')) {
+    return [
+      { label: '当前处境', value: '任务还没有可用视频片段，渲染无法开始。' },
+      { label: '失败步骤', value: '素材分段' },
+      { label: '可读原因', value: '种子视频未完成分段，或分段结果不可用。' },
+      { label: '下一步动作', value: '先去素材库确认视频状态，必要时重新上传或重新发起分段后再入队。' }
+    ];
+  }
+  if (lower.includes('music') && (lower.includes('missing') || lower.includes('not found'))) {
+    return [
+      { label: '当前处境', value: '模板需要的配乐没有找到，任务不能完整渲染。' },
+      { label: '失败步骤', value: '配乐装配' },
+      { label: '可读原因', value: '所选配乐文件缺失或已被归档。' },
+      { label: '下一步动作', value: '在模板方法或本次参数中换一首可用配乐，再重新入队。' }
+    ];
+  }
+  if (lower.includes('missing') || message.includes('缺少')) {
+    return [
+      { label: '当前处境', value: '模板要求的字段或素材还没补齐。' },
+      { label: '失败步骤', value: '任务预检' },
+      { label: '可读原因', value: message },
+      { label: '下一步动作', value: '回生产批次补本次参数、图片或视频片段，然后重新运行预检。' }
+    ];
+  }
+  if (lower.includes('ffmpeg')) {
+    return [
+      { label: '当前处境', value: '媒体处理命令执行失败。' },
+      { label: '失败步骤', value: 'FFmpeg 渲染' },
+      { label: '可读原因', value: '可能是源文件编码、尺寸、音频流或滤镜参数不兼容。' },
+      { label: '下一步动作', value: '查看技术详情；若同素材反复失败，换源文件或降级模板效果后重试。' }
+    ];
+  }
+  return [
+    { label: '当前处境', value: '任务没有完成，需要查看详情后处理。' },
+    { label: '失败步骤', value: '渲染流程' },
+    { label: '可读原因', value: message },
+    { label: '下一步动作', value: '先重试一次；若仍失败，回生产批次调整模板、素材或本次参数。' }
+  ];
 }

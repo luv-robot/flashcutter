@@ -85,6 +85,54 @@ const defaultTemplate = {
   review_notes: '确认改剪变化明显、文案可读，并且符合上传前已授权素材的试投放用途。'
 };
 
+const outputPresetOptions = [
+  {
+    id: 'vertical_9_16_cover',
+    label: '竖版 9:16 填满画面',
+    aspect_ratio: '9:16',
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    fit: 'cover'
+  },
+  {
+    id: 'vertical_9_16_contain',
+    label: '竖版 9:16 保留完整画面',
+    aspect_ratio: '9:16',
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    fit: 'contain'
+  },
+  {
+    id: 'square_1_1_contain',
+    label: '方版 1:1',
+    aspect_ratio: '1:1',
+    width: 1080,
+    height: 1080,
+    fps: 30,
+    fit: 'contain'
+  },
+  {
+    id: 'horizontal_16_9_cover',
+    label: '横版 16:9',
+    aspect_ratio: '16:9',
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    fit: 'cover'
+  },
+  {
+    id: 'source_original',
+    label: '保持原尺寸',
+    aspect_ratio: 'source',
+    width: 1280,
+    height: 720,
+    fps: 30,
+    fit: 'original'
+  }
+];
+
 export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
   const [name, setName] = useState('vertical-fast-hook');
   const [description, setDescription] = useState('9:16 短视频钩子变体。');
@@ -274,23 +322,29 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
   }
 
   function updateField(path: string, value: unknown) {
+    updateFields([[path, value]]);
+  }
+
+  function updateFields(patches: Array<[string, unknown]>) {
     const next = parsedSpec();
-    const keys = path.split('.');
-    let cursor: Record<string, unknown> | unknown[] = next;
-    keys.slice(0, -1).forEach((key, indexInPath) => {
-      const nextKey = keys[indexInPath + 1];
-      const shouldBeArray = isArrayIndex(nextKey);
-      const index = isArrayIndex(key) ? Number(key) : key;
-      const container = cursor as Record<string | number, unknown>;
-      const existing = container[index];
-      if (!existing || typeof existing !== 'object') {
-        container[index] = shouldBeArray ? [] : {};
-      }
-      cursor = container[index] as Record<string, unknown> | unknown[];
+    patches.forEach(([path, value]) => {
+      const keys = path.split('.');
+      let cursor: Record<string, unknown> | unknown[] = next;
+      keys.slice(0, -1).forEach((key, indexInPath) => {
+        const nextKey = keys[indexInPath + 1];
+        const shouldBeArray = isArrayIndex(nextKey);
+        const index = isArrayIndex(key) ? Number(key) : key;
+        const container = cursor as Record<string | number, unknown>;
+        const existing = container[index];
+        if (!existing || typeof existing !== 'object') {
+          container[index] = shouldBeArray ? [] : {};
+        }
+        cursor = container[index] as Record<string, unknown> | unknown[];
+      });
+      const lastKey = keys[keys.length - 1];
+      const lastIndex = isArrayIndex(lastKey) ? Number(lastKey) : lastKey;
+      (cursor as Record<string | number, unknown>)[lastIndex] = value;
     });
-    const lastKey = keys[keys.length - 1];
-    const lastIndex = isArrayIndex(lastKey) ? Number(lastKey) : lastKey;
-    (cursor as Record<string | number, unknown>)[lastIndex] = value;
     setJsonSpec(JSON.stringify(next, null, 2));
   }
 
@@ -313,14 +367,41 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
       updateField('music.track_id', undefined);
       return;
     }
-    updateField('music.mode', 'replace');
-    updateField('music.track_id', Number(trackId));
-    if (field('music.volume', null) === null) {
-      updateField('music.volume', 1);
-    }
-    if (field('music.loop', null) === null) {
-      updateField('music.loop', true);
-    }
+    updateFields([
+      ['music.mode', 'replace'],
+      ['music.track_id', Number(trackId)],
+      ...(field('music.volume', null) === null ? [['music.volume', 1] as [string, unknown]] : []),
+      ...(field('music.loop', null) === null ? [['music.loop', true] as [string, unknown]] : [])
+    ]);
+  }
+
+  function currentOutputPresetId() {
+    const delivery = {
+      aspect_ratio: textField('render_preset.delivery.aspect_ratio', '9:16'),
+      width: numberField('render_preset.delivery.width', 1080),
+      height: numberField('render_preset.delivery.height', 1920),
+      fps: numberField('render_preset.delivery.fps', 30),
+      fit: textField('render_preset.delivery.fit', 'cover')
+    };
+    return outputPresetOptions.find((preset) =>
+      preset.aspect_ratio === delivery.aspect_ratio &&
+      preset.width === delivery.width &&
+      preset.height === delivery.height &&
+      preset.fps === delivery.fps &&
+      preset.fit === delivery.fit
+    )?.id ?? 'custom';
+  }
+
+  function applyOutputPreset(presetId: string) {
+    const preset = outputPresetOptions.find((item) => item.id === presetId);
+    if (!preset) return;
+    updateFields([
+      ['render_preset.delivery.aspect_ratio', preset.aspect_ratio],
+      ['render_preset.delivery.width', preset.width],
+      ['render_preset.delivery.height', preset.height],
+      ['render_preset.delivery.fps', preset.fps],
+      ['render_preset.delivery.fit', preset.fit]
+    ]);
   }
 
   return (
@@ -370,27 +451,17 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
               />
             </label>
             <label>
-              输出比例
+              输出规格
               <select
-                value={textField('render_preset.delivery.aspect_ratio', '9:16')}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  updateField('render_preset.delivery.aspect_ratio', value);
-                  if (value === '9:16') {
-                    updateField('render_preset.delivery.width', 1080);
-                    updateField('render_preset.delivery.height', 1920);
-                  } else if (value === '1:1') {
-                    updateField('render_preset.delivery.width', 1080);
-                    updateField('render_preset.delivery.height', 1080);
-                  } else if (value === 'source') {
-                    updateField('render_preset.delivery.width', 1280);
-                    updateField('render_preset.delivery.height', 720);
-                  }
-                }}
+                value={currentOutputPresetId()}
+                onChange={(event) => applyOutputPreset(event.target.value)}
               >
-                <option value="9:16">9:16 竖屏</option>
-                <option value="1:1">1:1 方形</option>
-                <option value="source">保留源比例</option>
+                <option value="custom">自定义：{deliverySummary(parsedSpec())}</option>
+                {outputPresetOptions.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label} · {preset.width}x{preset.height} · {preset.fps}fps · {fitLabel(preset.fit)}
+                  </option>
+                ))}
               </select>
             </label>
             <label>
@@ -427,43 +498,6 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
                   updateField('blueprint.editing.target_duration_seconds', Number(event.target.value))
                 }
               />
-            </label>
-            <label>
-              输出宽度
-              <input
-                type="number"
-                value={numberField('render_preset.delivery.width', 1080)}
-                onChange={(event) => updateField('render_preset.delivery.width', Number(event.target.value))}
-              />
-            </label>
-            <label>
-              输出高度
-              <input
-                type="number"
-                value={numberField('render_preset.delivery.height', 1920)}
-                onChange={(event) => updateField('render_preset.delivery.height', Number(event.target.value))}
-              />
-            </label>
-            <label>
-              FPS
-              <input
-                type="number"
-                min="1"
-                max="120"
-                value={numberField('render_preset.delivery.fps', 30)}
-                onChange={(event) => updateField('render_preset.delivery.fps', Number(event.target.value))}
-              />
-            </label>
-            <label>
-              适配方式
-              <select
-                value={textField('render_preset.delivery.fit', 'cover')}
-                onChange={(event) => updateField('render_preset.delivery.fit', event.target.value)}
-              >
-                <option value="cover">裁切填满</option>
-                <option value="contain">完整保留</option>
-                <option value="original">原始适配</option>
-              </select>
             </label>
             <label>
               画面方向
@@ -884,16 +918,46 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
                 <p>
                   {templateBadge(template)} · {templateSummary(template)}
                 </p>
+                <div className="template-summary-grid">
+                  <TemplateSummaryCell
+                    label="需要字段"
+                    value={runtimeFieldSummary(template)}
+                  />
+                  <TemplateSummaryCell
+                    label="执行动作"
+                    value={operationSummary(template)}
+                  />
+                  <TemplateSummaryCell
+                    label="输出规格"
+                    value={deliverySummary(template.json_spec)}
+                  />
+                  <TemplateSummaryCell
+                    label="审核重点"
+                    value={reviewChecklistSummary(template)}
+                  />
+                </div>
                 <div className="button-row">
                   <button onClick={() => editTemplate(template)}>编辑</button>
                 </div>
               </div>
-              <JsonBlock value={template.json_spec} />
+              <details className="template-json-details">
+                <summary>高级 JSON</summary>
+                <JsonBlock value={template.json_spec} />
+              </details>
             </article>
           ))}
         </div>
       </div>
     </section>
+  );
+}
+
+function TemplateSummaryCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 
@@ -904,4 +968,81 @@ function isArrayIndex(value: string): boolean {
 function uniqueCopyName(value: string): string {
   const suffix = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
   return `${value || 'template'}-copy-${suffix}`;
+}
+
+function runtimeFieldSummary(template: Template): string {
+  const fields = template.json_spec.runtime_fields;
+  if (!Array.isArray(fields) || fields.length === 0) {
+    return '无额外字段';
+  }
+  const labels = fields
+    .filter((field): field is Record<string, unknown> => Boolean(field) && typeof field === 'object')
+    .map((field) => {
+      const label = typeof field.label === 'string' ? field.label : field.key;
+      const required = field.required === true ? '必填' : '可选';
+      return `${label}(${required})`;
+    });
+  return labels.slice(0, 4).join('、') + (labels.length > 4 ? ` 等 ${labels.length} 项` : '');
+}
+
+function operationSummary(template: Template): string {
+  const spec = template.json_spec;
+  const blueprint = record(spec.blueprint);
+  const editing = record(blueprint.editing);
+  const stylePack = record(spec.style_pack);
+  const transformations = record(stylePack.transformations);
+  const pieces = [
+    textValue(editing.cut_style) || '剪辑',
+    textValue(transformations.transition_style),
+    textValue(transformations.visual_style),
+    textValue(transformations.motion_style),
+    Number.isFinite(transformations.playback_speed) ? `${transformations.playback_speed}x` : ''
+  ].filter(Boolean);
+  return pieces.join(' · ') || '按模板方法处理';
+}
+
+function deliverySummary(spec: Record<string, unknown>): string {
+  const renderPreset = record(spec.render_preset);
+  const delivery = record(renderPreset.delivery);
+  const width = typeof delivery.width === 'number' ? delivery.width : null;
+  const height = typeof delivery.height === 'number' ? delivery.height : null;
+  const fps = typeof delivery.fps === 'number' ? delivery.fps : null;
+  const aspectRatio = textValue(delivery.aspect_ratio) || 'source';
+  const fit = fitLabel(textValue(delivery.fit) || 'original');
+  return [
+    aspectRatio,
+    width && height ? `${width}x${height}` : '源尺寸',
+    fps ? `${fps}fps` : '',
+    fit
+  ].filter(Boolean).join(' · ');
+}
+
+function reviewChecklistSummary(template: Template): string {
+  const blueprint = record(template.json_spec.blueprint);
+  const contract = record(blueprint.production_contract);
+  const checklist = contract.review_checklist;
+  if (!Array.isArray(checklist) || checklist.length === 0) {
+    return textValue(template.json_spec.review_notes) || '按审核说明检查';
+  }
+  const labels = checklist.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  return labels.slice(0, 2).join('；') + (labels.length > 2 ? ` 等 ${labels.length} 项` : '');
+}
+
+function fitLabel(value: string) {
+  const labels: Record<string, string> = {
+    cover: '裁切填满',
+    contain: '完整保留',
+    original: '原始适配'
+  };
+  return labels[value] ?? value;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function textValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }

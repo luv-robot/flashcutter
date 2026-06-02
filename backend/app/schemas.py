@@ -178,7 +178,21 @@ class AIAssetUpdate(BaseModel):
     def validate_asset_type(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return value
-        allowed = {"hook", "cta", "broll", "reaction", "meme", "product_motion"}
+        allowed = {
+            "hook",
+            "cta",
+            "broll",
+            "reaction",
+            "meme",
+            "product_motion",
+            "intro",
+            "outro",
+            "frame",
+            "logo",
+            "cover",
+            "poster",
+            "reference",
+        }
         if value not in allowed:
             raise ValueError(f"asset_type must be one of: {', '.join(sorted(allowed))}")
         return value

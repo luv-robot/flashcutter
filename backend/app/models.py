@@ -80,6 +80,13 @@ class AIAssetType(str, Enum):
     REACTION = "reaction"
     MEME = "meme"
     PRODUCT_MOTION = "product_motion"
+    INTRO = "intro"
+    OUTRO = "outro"
+    FRAME = "frame"
+    LOGO = "logo"
+    COVER = "cover"
+    POSTER = "poster"
+    REFERENCE = "reference"
 
 
 class AIAssetStatus(str, Enum):

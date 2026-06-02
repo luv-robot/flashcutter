@@ -9,6 +9,7 @@ type ReviewOutputsPageProps = {
   assets: Asset[];
   focusedAssetId: number | null;
   onRefresh: () => Promise<void>;
+  onOpenPackages: () => void;
 };
 
 type ReviewGroup = {
@@ -42,7 +43,8 @@ export function ReviewOutputsPage({
   outputs,
   assets,
   focusedAssetId,
-  onRefresh
+  onRefresh,
+  onOpenPackages
 }: ReviewOutputsPageProps) {
   const [assetFilter, setAssetFilter] = useState<number | 'all'>(focusedAssetId ?? 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -70,6 +72,7 @@ export function ReviewOutputsPage({
   const selectedGroup =
     reviewGroups.find((group) => group.key === selectedGroupKey) ?? reviewGroups[0] ?? null;
   const nextPendingOutput = nextReviewableOutput(selectedGroup?.outputs ?? [], selected);
+  const selectedGroupStats = selectedGroup ? reviewGroupStats(selectedGroup.outputs) : null;
 
   useEffect(() => {
     if (focusedAssetId) {
@@ -275,6 +278,13 @@ export function ReviewOutputsPage({
                   原素材：{selected.asset_filename} · R{selected.revision_number} · 当前变体：
                   {templateLabel(selected)}
                 </p>
+                {selectedGroupStats && (
+                  <div className="review-batch-stats" aria-label="批次审核统计">
+                    <span>{selectedGroupStats.approved} 已通过</span>
+                    <span>{selectedGroupStats.pending} 待审核</span>
+                    <span>{selectedGroupStats.needsChanges} 需修改</span>
+                  </div>
+                )}
               </div>
               <div className="review-stage-tools">
                 <StatusBadge value={selected.review_status} />
@@ -286,7 +296,22 @@ export function ReviewOutputsPage({
                 >
                   打包一键下载
                 </button>
+                <button
+                  className="secondary-action"
+                  type="button"
+                  onClick={onOpenPackages}
+                  disabled={!selectedGroupStats?.approved}
+                >
+                  创建投放包
+                </button>
               </div>
+            </div>
+            <div className="review-revision-note">
+              <strong>版本关系</strong>
+              <span>
+                当前为 R{selected.revision_number}。标记批次需再生产后，下一轮会生成 R{selected.revision_number + 1}，
+                本轮反馈会继续保留用于对照。
+              </span>
             </div>
 
             <div className="variant-strip">
@@ -580,6 +605,14 @@ function dominantReviewStatus(outputs: OutputReview[]): string {
   if (statuses.includes('rejected')) return 'rejected';
   if (statuses.includes('discarded')) return 'discarded';
   return statuses[0] ?? 'pending_review';
+}
+
+function reviewGroupStats(outputs: OutputReview[]) {
+  return {
+    approved: outputs.filter((output) => output.review_status === 'approved').length,
+    pending: outputs.filter((output) => output.review_status === 'pending_review').length,
+    needsChanges: outputs.filter((output) => output.review_status === 'needs_changes').length
+  };
 }
 
 function templateLabel(output: OutputReview): string {

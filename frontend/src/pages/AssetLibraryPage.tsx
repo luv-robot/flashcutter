@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Asset } from '../api/types';
 import { CreativeReferencesPage } from './CreativeReferencesPage';
+import { ImageAssetsPage } from './ImageAssetsPage';
 import { MusicLibraryPage } from './MusicLibraryPage';
 import { SeedVideosPage } from './SeedVideosPage';
 import { UserVideoClipsPage } from './UserVideoClipsPage';
@@ -68,25 +69,7 @@ export function AssetLibraryPage({
         />
       )}
       {tab === 'video-clips' && <UserVideoClipsPage />}
-      {tab === 'images' && (
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <div className="panel-kicker">图片素材</div>
-              <h2>图片框、Logo 与活动图</h2>
-              <p>图片素材会用于模板方法中的图片框、品牌包装和本次参数。</p>
-            </div>
-            <button className="secondary-action" type="button" disabled>
-              上传图片
-            </button>
-          </div>
-          <p className="empty-state">图片素材接口尚未接入，当前可先在组件参考中沉淀图片框样式。</p>
-          <div className="next-step-panel">
-            <strong>下一步</strong>
-            <span>需要图片框、Logo 或贴片封面时，先在组件参考中记录来源和授权状态，待图片素材接口接入后再用于生产。</span>
-          </div>
-        </section>
-      )}
+      {tab === 'images' && <ImageAssetsPage />}
       {tab === 'music' && <MusicLibraryPage />}
       {tab === 'references' && <CreativeReferencesPage />}
     </section>

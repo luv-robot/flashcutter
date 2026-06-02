@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
+import { labelForAIAssetType, rightsStatusFromTags } from '../api/assetDisplay';
 import { templateBadge, templateSummary, templateTitle } from '../api/templateDisplay';
 import type {
   AIAsset,
   Asset,
   GenerationTask,
+  MusicTrack,
   ProductionRunPreflight,
   Template,
   VariantPreflight
@@ -21,6 +23,7 @@ type CreateVariantsPageProps = {
   onRendered: () => Promise<void>;
   onGoToReview: () => void;
   onGoToAssets: () => void;
+  onGoToQueue: () => void;
 };
 
 type WizardStep = 'mode' | 'videos' | 'templates' | 'params' | 'preflight' | 'queue';
@@ -34,6 +37,21 @@ const wizardSteps: Array<{ id: WizardStep; label: string }> = [
   { id: 'preflight', label: '预检' },
   { id: 'queue', label: '入队' }
 ];
+
+const DRAFT_KEY = 'flashcutter_production_draft_v1';
+
+type RuntimeField = {
+  key: string;
+  label: string;
+  field_type: string;
+  asset_kind?: string;
+  asset_type?: string;
+  required?: boolean;
+  max_length?: number;
+};
+
+type RuntimeValue = string | number | { asset_id: number };
+type PreflightItem = VariantPreflight['items'][number];
 
 const productionModes: Array<{
   id: ProductionMode;
@@ -70,7 +88,8 @@ export function CreateVariantsPage({
   onTasksCreated,
   onRendered,
   onGoToReview,
-  onGoToAssets
+  onGoToAssets,
+  onGoToQueue
 }: CreateVariantsPageProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [step, setStep] = useState<WizardStep>('mode');
@@ -88,15 +107,30 @@ export function CreateVariantsPage({
   const [preflight, setPreflight] = useState<VariantPreflight | null>(null);
   const [matrixPreflight, setMatrixPreflight] = useState<ProductionRunPreflight | null>(null);
   const [clipAssets, setClipAssets] = useState<AIAsset[]>([]);
+  const [imageAssets, setImageAssets] = useState<AIAsset[]>([]);
+  const [musicTracks, setMusicTracks] = useState<MusicTrack[]>([]);
   const [slotOverrides, setSlotOverrides] = useState<Record<string, number | ''>>({});
+  const [runtimeValues, setRuntimeValues] = useState<Record<string, RuntimeValue>>({});
   const [outputPresetId, setOutputPresetId] = useState('vertical_9_16_cover');
   const [campaignHeadline, setCampaignHeadline] = useState('');
+  const [draftAvailable, setDraftAvailable] = useState(() =>
+    Boolean(localStorage.getItem(DRAFT_KEY))
+  );
+  const [namePrefixTouched, setNamePrefixTouched] = useState(false);
 
   const productionAssetIds = productionMode === 'one_asset_many_templates'
     ? selectedAssetId ? [selectedAssetId] : []
     : selectedAssetIds;
   const selectedAsset = assets.find((asset) => asset.id === productionAssetIds[0]);
   const selectedTemplates = templates.filter((template) => selectedTemplateIds.includes(template.id));
+  const runtimeFields = useMemo(
+    () => runtimeFieldsForTemplates(selectedTemplates),
+    [selectedTemplates]
+  );
+  const autoNamePrefix = useMemo(
+    () => buildAutoNamePrefix(productionMode, productionAssetIds, selectedTemplates, assets),
+    [assets, productionAssetIds, productionMode, selectedTemplates]
+  );
   const filteredTemplates = useMemo(() => {
     const needle = templateFilter.trim().toLowerCase();
     if (!needle) return templates;
@@ -120,6 +154,10 @@ export function CreateVariantsPage({
     : filteredTemplates.map((template) => template.id);
   const canPreflight = productionAssetIds.length > 0 && preflightTemplateIds.length > 0 && !busy;
   const preflightSummary = summarizePreflight(preflight, matrixPreflight);
+  const groupedPreflight = groupPreflightItems(preflightSummary.items);
+  const dynamicRuntimeFields = runtimeFields.filter(
+    (field) => !['campaign_headline', 'hook', 'cta'].includes(field.key)
+  );
   const canQueue =
     productionAssetIds.length > 0 &&
     selectedTemplateIds.length > 0 &&
@@ -148,9 +186,21 @@ export function CreateVariantsPage({
   }, [openSignal]);
 
   useEffect(() => {
-    void api.listAIAssets({ asset_kind: 'video', scope: 'private' })
-      .then(setClipAssets)
-      .catch(() => setClipAssets([]));
+    void Promise.all([
+      api.listAIAssets({ asset_kind: 'video' }),
+      api.listAIAssets({ asset_kind: 'image' }),
+      api.listMusic()
+    ])
+      .then(([clips, images, tracks]) => {
+        setClipAssets(clips);
+        setImageAssets(images);
+        setMusicTracks(tracks);
+      })
+      .catch(() => {
+        setClipAssets([]);
+        setImageAssets([]);
+        setMusicTracks([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -158,6 +208,12 @@ export function CreateVariantsPage({
       setSelectedAssetIds([selectedAssetId]);
     }
   }, [selectedAssetId, selectedAssetIds.length]);
+
+  useEffect(() => {
+    if (!namePrefixTouched && autoNamePrefix) {
+      setNamePrefix(autoNamePrefix);
+    }
+  }, [autoNamePrefix, namePrefixTouched]);
 
   function selectProductionMode(nextMode: ProductionMode) {
     setProductionMode(nextMode);
@@ -305,9 +361,91 @@ export function CreateVariantsPage({
   }
 
   function productionRuntimeValues() {
+    const dynamicRuntimeValues = Object.entries(runtimeValues).reduce<Record<string, RuntimeValue>>(
+      (result, [key, value]) => {
+        if (value === '' || value == null) return result;
+        result[key] = value;
+        return result;
+      },
+      {}
+    );
+    Object.entries(slotOverrides).forEach(([slot, assetId]) => {
+      if (assetId) {
+        dynamicRuntimeValues[slot] = { asset_id: Number(assetId) };
+      }
+    });
     return {
+      ...dynamicRuntimeValues,
       ...(campaignHeadline.trim() ? { campaign_headline: campaignHeadline.trim() } : {})
     };
+  }
+
+  function updateRuntimeField(key: string, value: RuntimeValue | '') {
+    setRuntimeValues((current) => {
+      const next = { ...current };
+      if (value === '') {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+      setPreflight(null);
+      setMatrixPreflight(null);
+      return next;
+    });
+  }
+
+  function saveDraft() {
+    const payload = {
+      productionMode,
+      namePrefix,
+      selectedTemplateIds,
+      selectedAssetIds,
+      selectedAssetId,
+      slotOverrides,
+      runtimeValues,
+      outputPresetId,
+      campaignHeadline
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+    setDraftAvailable(true);
+    setStatusMessage('已暂存草稿。下次创建生产批次时可以继续载入。');
+    setDialogOpen(false);
+  }
+
+  function loadDraft() {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return;
+    try {
+      const payload = JSON.parse(raw) as {
+        productionMode?: ProductionMode;
+        namePrefix?: string;
+        selectedTemplateIds?: number[];
+        selectedAssetIds?: number[];
+        selectedAssetId?: number | null;
+        slotOverrides?: Record<string, number | ''>;
+        runtimeValues?: Record<string, RuntimeValue>;
+        outputPresetId?: string;
+        campaignHeadline?: string;
+      };
+      if (payload.productionMode) setProductionMode(payload.productionMode);
+      if (payload.namePrefix) {
+        setNamePrefix(payload.namePrefix);
+        setNamePrefixTouched(true);
+      }
+      if (payload.selectedTemplateIds) setSelectedTemplateIds(payload.selectedTemplateIds);
+      if (payload.selectedAssetIds) setSelectedAssetIds(payload.selectedAssetIds);
+      if (payload.selectedAssetId) onSelectAsset(payload.selectedAssetId);
+      if (payload.slotOverrides) setSlotOverrides(payload.slotOverrides);
+      if (payload.runtimeValues) setRuntimeValues(payload.runtimeValues);
+      if (payload.outputPresetId) setOutputPresetId(payload.outputPresetId);
+      if (payload.campaignHeadline) setCampaignHeadline(payload.campaignHeadline);
+      setPreflight(null);
+      setMatrixPreflight(null);
+      setStatusMessage('已载入暂存草稿，请重新运行预检后入队。');
+      setStep('videos');
+    } catch {
+      setError('暂存草稿无法读取，请重新选择视频和模板。');
+    }
   }
 
   function nextStep() {
@@ -393,19 +531,32 @@ export function CreateVariantsPage({
 
             <div className="wizard-body">
               {step === 'mode' && (
-                <div className="mode-card-grid">
-                  {productionModes.map((mode) => (
-                    <button
-                      key={mode.id}
-                      type="button"
-                      className={`mode-card ${productionMode === mode.id ? 'selected-mode-card' : ''}`}
-                      onClick={() => selectProductionMode(mode.id)}
-                    >
-                      <strong>{mode.title}</strong>
-                      <span>{mode.description}</span>
-                      <small>{mode.output}</small>
-                    </button>
-                  ))}
+                <div className="wizard-stack">
+                  {draftAvailable && (
+                    <div className="draft-resume-panel">
+                      <div>
+                        <strong>检测到暂存草稿</strong>
+                        <span>可以继续上一次没有入队的批次，载入后需要重新预检。</span>
+                      </div>
+                      <button className="secondary-action" type="button" onClick={loadDraft}>
+                        继续草稿
+                      </button>
+                    </div>
+                  )}
+                  <div className="mode-card-grid">
+                    {productionModes.map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        className={`mode-card ${productionMode === mode.id ? 'selected-mode-card' : ''}`}
+                        onClick={() => selectProductionMode(mode.id)}
+                      >
+                        <strong>{mode.title}</strong>
+                        <span>{mode.description}</span>
+                        <small>{mode.output}</small>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -522,11 +673,38 @@ export function CreateVariantsPage({
                 <div className="runtime-param-grid">
                   <label>
                     变体任务名前缀
-                    <input value={namePrefix} onChange={(event) => setNamePrefix(event.target.value)} />
+                    <div className="inline-field-action">
+                      <input
+                        value={namePrefix}
+                        onChange={(event) => {
+                          setNamePrefix(event.target.value);
+                          setNamePrefixTouched(true);
+                          setPreflight(null);
+                          setMatrixPreflight(null);
+                        }}
+                      />
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        onClick={() => {
+                          setNamePrefix(autoNamePrefix);
+                          setNamePrefixTouched(false);
+                        }}
+                      >
+                        自动命名
+                      </button>
+                    </div>
                   </label>
                   <label>
                     输出规格
-                    <select value={outputPresetId} onChange={(event) => setOutputPresetId(event.target.value)}>
+                    <select
+                      value={outputPresetId}
+                      onChange={(event) => {
+                        setOutputPresetId(event.target.value);
+                        setPreflight(null);
+                        setMatrixPreflight(null);
+                      }}
+                    >
                       <option value="vertical_9_16_cover">竖版 9:16 填满画面</option>
                       <option value="vertical_9_16_contain">竖版 9:16 保留完整画面</option>
                       <option value="square_1_1_contain">方版 1:1</option>
@@ -538,7 +716,11 @@ export function CreateVariantsPage({
                     本次活动文案
                     <input
                       value={campaignHeadline}
-                      onChange={(event) => setCampaignHeadline(event.target.value)}
+                      onChange={(event) => {
+                        setCampaignHeadline(event.target.value);
+                        setPreflight(null);
+                        setMatrixPreflight(null);
+                      }}
                       placeholder="只保存到本次生产批次"
                     />
                   </label>
@@ -546,12 +728,14 @@ export function CreateVariantsPage({
                     Hook 片段
                     <select
                       value={slotOverrides.hook ?? ''}
-                      onChange={(event) =>
+                      onChange={(event) => {
                         setSlotOverrides((current) => ({
                           ...current,
                           hook: event.target.value ? Number(event.target.value) : ''
-                        }))
-                      }
+                        }));
+                        setPreflight(null);
+                        setMatrixPreflight(null);
+                      }}
                     >
                       <option value="">自动匹配</option>
                       {clipAssets.filter((clip) => clip.asset_type === 'hook').map((clip) => (
@@ -565,12 +749,14 @@ export function CreateVariantsPage({
                     CTA / Reaction 片段
                     <select
                       value={slotOverrides.cta ?? ''}
-                      onChange={(event) =>
+                      onChange={(event) => {
                         setSlotOverrides((current) => ({
                           ...current,
                           cta: event.target.value ? Number(event.target.value) : ''
-                        }))
-                      }
+                        }));
+                        setPreflight(null);
+                        setMatrixPreflight(null);
+                      }}
                     >
                       <option value="">自动匹配</option>
                       {clipAssets.filter((clip) => ['cta', 'reaction'].includes(clip.asset_type)).map((clip) => (
@@ -586,6 +772,30 @@ export function CreateVariantsPage({
                   <div className="one-time-note">
                     如果模板选择配乐，生成视频会用所选配乐替换原视频声音；需要保留原声时请改用不替换配乐的模板。
                   </div>
+                  {dynamicRuntimeFields.length > 0 && (
+                    <div className="runtime-field-section">
+                      <div className="section-title-row">
+                        <div>
+                          <h3>模板要求的本次字段</h3>
+                          <p>这些字段来自已选模板，只影响本批次。</p>
+                        </div>
+                        <strong>{dynamicRuntimeFields.length}</strong>
+                      </div>
+                      <div className="runtime-field-grid">
+                        {dynamicRuntimeFields.map((field) => (
+                          <RuntimeFieldControl
+                            key={field.key}
+                            field={field}
+                            value={runtimeValues[field.key] ?? ''}
+                            videoAssets={clipAssets}
+                            imageAssets={imageAssets}
+                            musicTracks={musicTracks}
+                            onChange={(value) => updateRuntimeField(field.key, value)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -608,31 +818,64 @@ export function CreateVariantsPage({
                         <button className="secondary-action" type="button" onClick={() => setStep('templates')}>
                           改用其他模板
                         </button>
-                        <button className="secondary-action" type="button" onClick={() => setDialogOpen(false)}>
+                        <button className="secondary-action" type="button" onClick={saveDraft}>
                           暂存草稿
                         </button>
                       </div>
                     </div>
                   )}
-                  <div className="preflight-list">
-                    {preflightSummary.items.length === 0 ? (
-                      <p className="empty-state">点击“运行预检”后查看任务是否可入队。</p>
-                    ) : (
-                      preflightSummary.items.map((item, index) => (
-                        <article key={`${item.asset_id}-${item.template_id}-${index}`} className="preflight-item">
-                          <strong>{item.asset_filename || selectedAsset?.original_filename || '当前视频'} / {item.title || item.template_name}</strong>
-                          <span>
-                            {preflightStatusLabel(item.status, item.missing_fields)} ·{' '}
-                            {item.output_width && item.output_height
-                              ? `${item.output_width}x${item.output_height}`
-                              : '原始尺寸'} · {item.fit}
-                          </span>
-                          {item.missing_fields.length > 0 && <small>缺少：{item.missing_fields.join('、')}</small>}
-                          {item.warnings.length > 0 && <small>{item.warnings.join('；')}</small>}
-                        </article>
-                      ))
-                    )}
-                  </div>
+                  {groupedPreflight.warning.length > 0 && preflightSummary.blockedCount === 0 && (
+                    <p className="notice">有提醒项但不阻塞入队，建议审核时重点查看这些变体。</p>
+                  )}
+                  {preflightSummary.items.length === 0 ? (
+                    <p className="empty-state">点击“运行预检”后查看任务是否可入队。</p>
+                  ) : (
+                    <div className="preflight-status-stack">
+                      {(['blocked', 'warning', 'ready'] as const).map((status) => {
+                        const items = groupedPreflight[status];
+                        if (items.length === 0) return null;
+                        return (
+                          <section key={status} className={`preflight-status-section preflight-status-${status}`}>
+                            <div className="panel-header compact">
+                              <div>
+                                <h3>{preflightGroupLabel(status)}</h3>
+                                <p>{preflightGroupDescription(status)}</p>
+                              </div>
+                              <strong className="summary-number">{items.length}</strong>
+                            </div>
+                            <div className="preflight-list">
+                              {items.map((item, index) => (
+                                <article key={`${item.asset_id}-${item.template_id}-${status}-${index}`} className="preflight-item">
+                                  <strong>{item.asset_filename || selectedAsset?.original_filename || '当前视频'} / {item.title || item.template_name}</strong>
+                                  <span>
+                                    {preflightStatusLabel(item.status, item.missing_fields)} ·{' '}
+                                    {item.output_width && item.output_height
+                                      ? `${item.output_width}x${item.output_height}`
+                                      : '原始尺寸'} · {item.fit}
+                                  </span>
+                                  {item.missing_fields.length > 0 && <small>缺少：{item.missing_fields.join('、')}</small>}
+                                  {item.warnings.length > 0 && <small>{item.warnings.join('；')}</small>}
+                                  {status === 'blocked' && (
+                                    <div className="button-row">
+                                      <button className="secondary-action" type="button" onClick={() => setStep('params')}>
+                                        补本次参数
+                                      </button>
+                                      <button className="secondary-action" type="button" onClick={() => setStep('templates')}>
+                                        换模板
+                                      </button>
+                                      <button className="secondary-action" type="button" onClick={saveDraft}>
+                                        暂存
+                                      </button>
+                                    </div>
+                                  )}
+                                </article>
+                              ))}
+                            </div>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -660,6 +903,22 @@ export function CreateVariantsPage({
                       ))
                     )}
                   </div>
+                  {createdTasks.length > 0 && (
+                    <div className="queue-next-actions">
+                      <div>
+                        <strong>下一步建议</strong>
+                        <span>先去队列看失败和进度；任务完成后再进入审核。</span>
+                      </div>
+                      <div className="button-row">
+                        <button className="primary-action" type="button" onClick={onGoToQueue}>
+                          去队列与失败
+                        </button>
+                        <button className="secondary-action" type="button" onClick={onGoToReview}>
+                          稍后审核
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -685,6 +944,11 @@ export function CreateVariantsPage({
                 已选 {productionAssetIds.length} 个视频 · {selectedTemplateIds.length} 个模板
               </div>
               <div className="button-row">
+                {step !== 'queue' && (
+                  <button className="secondary-action" type="button" onClick={saveDraft} disabled={busy}>
+                    暂存草稿
+                  </button>
+                )}
                 <button className="secondary-action" type="button" onClick={previousStep} disabled={step === 'mode' || busy}>
                   上一步
                 </button>
@@ -723,6 +987,9 @@ export function CreateVariantsPage({
                     <button className="secondary-action" type="button" onClick={onGoToReview}>
                       前往审核
                     </button>
+                    <button className="secondary-action" type="button" onClick={onGoToQueue}>
+                      队列与失败
+                    </button>
                   </>
                 )}
               </div>
@@ -751,6 +1018,100 @@ function SummaryTile({
   );
 }
 
+function RuntimeFieldControl({
+  field,
+  value,
+  videoAssets,
+  imageAssets,
+  musicTracks,
+  onChange
+}: {
+  field: RuntimeField;
+  value: RuntimeValue | '';
+  videoAssets: AIAsset[];
+  imageAssets: AIAsset[];
+  musicTracks: MusicTrack[];
+  onChange: (value: RuntimeValue | '') => void;
+}) {
+  if (field.field_type === 'music') {
+    return (
+      <label className="runtime-field-card">
+        <RuntimeFieldLabel field={field} />
+        <select
+          value={runtimeValueId(value)}
+          onChange={(event) => onChange(event.target.value ? Number(event.target.value) : '')}
+        >
+          <option value="">按模板默认</option>
+          {musicTracks.map((track) => (
+            <option key={track.id} value={track.id}>
+              {track.scope === 'system' ? '系统' : '私有'} · {track.title}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  if (field.field_type === 'asset') {
+    const pool = field.asset_kind === 'image'
+      ? imageAssets.filter((asset) => rightsStatusFromTags(asset.tags) === 'licensed')
+      : videoAssets;
+    const filteredPool = pool.filter((asset) => {
+      if (!field.asset_type) return true;
+      return asset.asset_type === field.asset_type;
+    });
+    return (
+      <label className="runtime-field-card">
+        <RuntimeFieldLabel field={field} />
+        <select
+          value={runtimeValueId(value)}
+          onChange={(event) =>
+            onChange(event.target.value ? { asset_id: Number(event.target.value) } : '')
+          }
+        >
+          <option value="">未选择</option>
+          {filteredPool.map((asset) => (
+            <option key={asset.id} value={asset.id}>
+              #{asset.id} {asset.title} · {labelForAIAssetType(asset.asset_type)}
+            </option>
+          ))}
+        </select>
+        {filteredPool.length === 0 && (
+          <small>
+            {field.asset_kind === 'image'
+              ? '没有已授权图片素材，请先到素材库上传。'
+              : '没有匹配的视频片段，请先到视频片段库补充。'}
+          </small>
+        )}
+      </label>
+    );
+  }
+
+  return (
+    <label className="runtime-field-card">
+      <RuntimeFieldLabel field={field} />
+      <input
+        value={typeof value === 'string' ? value : ''}
+        maxLength={field.max_length}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function RuntimeFieldLabel({ field }: { field: RuntimeField }) {
+  return (
+    <span className="runtime-field-label">
+      <strong>{field.label || field.key}</strong>
+      <small>
+        {field.required ? '必填' : '可选'}
+        {field.asset_kind ? ` · ${field.asset_kind}` : ''}
+        {field.asset_type ? ` · ${labelForAIAssetType(field.asset_type)}` : ''}
+      </small>
+    </span>
+  );
+}
+
 function summarizePreflight(
   preflight: VariantPreflight | null,
   matrixPreflight: ProductionRunPreflight | null
@@ -774,6 +1135,109 @@ function summarizePreflight(
     blockedCount,
     estimatedText: estimatedSeconds ? `约 ${Math.ceil(estimatedSeconds / 60)} 分钟` : '待预检'
   };
+}
+
+function runtimeFieldsForTemplates(templates: Template[]): RuntimeField[] {
+  const map = new Map<string, RuntimeField>();
+  templates.forEach((template) => {
+    const runtimeFields = template.json_spec.runtime_fields;
+    if (!Array.isArray(runtimeFields)) return;
+    runtimeFields.forEach((field) => {
+      if (!field || typeof field !== 'object' || Array.isArray(field)) return;
+      const record = field as Record<string, unknown>;
+      const key = typeof record.key === 'string' ? record.key : '';
+      if (!key || map.has(key)) return;
+      map.set(key, {
+        key,
+        label: typeof record.label === 'string' ? record.label : key,
+        field_type: typeof record.field_type === 'string' ? record.field_type : 'text',
+        asset_kind: typeof record.asset_kind === 'string' ? record.asset_kind : undefined,
+        asset_type: typeof record.asset_type === 'string' ? record.asset_type : undefined,
+        required: typeof record.required === 'boolean' ? record.required : false,
+        max_length: typeof record.max_length === 'number' ? record.max_length : undefined
+      });
+    });
+  });
+  return Array.from(map.values());
+}
+
+function buildAutoNamePrefix(
+  productionMode: ProductionMode,
+  assetIds: number[],
+  templates: Template[],
+  assets: Asset[]
+): string {
+  const firstAsset = assets.find((asset) => asset.id === assetIds[0]);
+  const assetPart = firstAsset
+    ? cleanName(firstAsset.original_filename.replace(/\.[^.]+$/, '')).slice(0, 22)
+    : assetIds.length > 1
+      ? `${assetIds.length}-assets`
+      : 'batch';
+  const templatePart = templates.length === 1
+    ? cleanName(templateTitle(templates[0])).slice(0, 20)
+    : templates.length > 1
+      ? `${templates.length}-templates`
+      : 'template';
+  const modePart = productionMode === 'many_assets_many_templates'
+    ? 'matrix'
+    : productionMode === 'one_asset_many_templates'
+      ? 'variants'
+      : 'batch';
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
+  return [stamp, modePart, assetPart, templatePart].filter(Boolean).join('-');
+}
+
+function cleanName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'item';
+}
+
+function runtimeValueId(value: RuntimeValue | ''): string {
+  if (!value) return '';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'object' && 'asset_id' in value) return String(value.asset_id);
+  return '';
+}
+
+function groupPreflightItems(items: PreflightItem[]) {
+  return items.reduce<{
+    blocked: PreflightItem[];
+    warning: PreflightItem[];
+    ready: PreflightItem[];
+  }>(
+    (result, item) => {
+      if (item.status === 'blocked' || item.missing_fields.length > 0) {
+        result.blocked.push(item);
+      } else if (item.status === 'warning' || item.warnings.length > 0) {
+        result.warning.push(item);
+      } else {
+        result.ready.push(item);
+      }
+      return result;
+    },
+    { blocked: [], warning: [], ready: [] }
+  );
+}
+
+function preflightGroupLabel(status: 'blocked' | 'warning' | 'ready') {
+  const labels = {
+    blocked: '阻塞项',
+    warning: '提醒项',
+    ready: '可入队'
+  };
+  return labels[status];
+}
+
+function preflightGroupDescription(status: 'blocked' | 'warning' | 'ready') {
+  const descriptions = {
+    blocked: '缺少必填字段或素材，不能入队。',
+    warning: '可以入队，但审核时要重点检查。',
+    ready: '预检通过，可以进入渲染队列。'
+  };
+  return descriptions[status];
 }
 
 function preflightStatusLabel(status: string, missingFields: string[]) {

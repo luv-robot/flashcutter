@@ -309,6 +309,7 @@ export default function App() {
                   setView('review');
                 }}
                 onGoToAssets={() => setView('assets')}
+                onGoToQueue={() => setView('tasks')}
               />
             )}
             {view === 'tasks' && (
@@ -316,6 +317,10 @@ export default function App() {
                 tasks={tasks}
                 templates={templates}
                 onRefresh={guardedRefresh}
+                onCreateBatch={() => {
+                  setView('production');
+                  setProductionDialogRequest((current) => current + 1);
+                }}
               />
             )}
             {view === 'review' && (
@@ -324,6 +329,7 @@ export default function App() {
                 assets={assets}
                 focusedAssetId={reviewAssetId}
                 onRefresh={guardedRefresh}
+                onOpenPackages={() => setView('packages')}
               />
             )}
             {view === 'packages' && <PlatformPackagesPage outputs={outputs} />}

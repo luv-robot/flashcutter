@@ -1,3 +1,5 @@
+import io
+import zipfile
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -1376,6 +1378,14 @@ def test_render_variants_for_asset(monkeypatch) -> None:
     assert package_response.status_code == 200
     assert package_response.headers["content-type"] == "application/zip"
     assert package_response.content.startswith(b"PK")
+    with zipfile.ZipFile(io.BytesIO(package_response.content)) as archive:
+        names = set(archive.namelist())
+        assert "metadata/manifest.json" in names
+        assert "metadata/review_records.csv" in names
+        manifest = archive.read("metadata/manifest.json").decode("utf-8")
+        assert "Only approved videos are included" in manifest
+        review_records = archive.read("metadata/review_records.csv").decode("utf-8")
+        assert "Package this output." in review_records
 
     run_status_response = client.patch(
         f"/api/production-runs/{production_run_id}/status",

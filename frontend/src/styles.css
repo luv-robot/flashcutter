@@ -1997,6 +1997,328 @@ dd {
   color: #ffffff;
 }
 
+.disabled-link {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.wizard-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.draft-resume-panel,
+.queue-next-actions,
+.ai-clone-hint {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid #d8e2ec;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 0.72rem;
+}
+
+.draft-resume-panel strong,
+.draft-resume-panel span,
+.queue-next-actions strong,
+.queue-next-actions span,
+.ai-clone-hint strong,
+.ai-clone-hint span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.draft-resume-panel span,
+.queue-next-actions span,
+.ai-clone-hint span {
+  margin-top: 0.12rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inline-field-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.48rem;
+}
+
+.runtime-field-section {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fafafa;
+  padding: 0.72rem;
+}
+
+.runtime-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 0.6rem;
+}
+
+.runtime-field-card {
+  align-content: start;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 0.62rem;
+}
+
+.runtime-field-card small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.runtime-field-label {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.runtime-field-label strong {
+  color: var(--text);
+}
+
+.preflight-status-stack {
+  display: grid;
+  gap: 0.68rem;
+}
+
+.preflight-status-section {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.7rem;
+  background: #fafafa;
+}
+
+.preflight-status-blocked {
+  border-color: #fca5a5;
+  background: #fff7f7;
+}
+
+.preflight-status-warning {
+  border-color: #f3d68d;
+  background: #fffaf0;
+}
+
+.preflight-status-ready {
+  border-color: #b9e6ce;
+  background: #f2fbf6;
+}
+
+.failure-guidance {
+  color: #7d2424;
+}
+
+.failure-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.52rem;
+  margin: 0;
+}
+
+.failure-detail-grid div {
+  border: 1px solid rgba(168, 50, 50, 0.22);
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 0.55rem;
+}
+
+.failure-detail-grid dd {
+  color: #7d2424;
+  font-weight: 650;
+}
+
+.review-batch-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.review-batch-stats span {
+  border: 1px solid #d6e2ea;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  padding: 0.12rem 0.48rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.review-revision-note {
+  display: grid;
+  gap: 0.16rem;
+  margin: 0 0.9rem 0.9rem;
+  border: 1px solid #d8e2ec;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 0.65rem;
+}
+
+.review-revision-note span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.template-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0.65rem 0;
+}
+
+.template-summary-grid div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 0.55rem;
+}
+
+.template-summary-grid span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.template-summary-grid strong {
+  color: var(--text);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.template-json-details {
+  border-top: 1px solid var(--line);
+  padding-top: 0.55rem;
+}
+
+.template-json-details summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.image-filter-row {
+  grid-template-columns: minmax(180px, 260px);
+}
+
+.image-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+
+.image-asset-card {
+  display: grid;
+  grid-template-rows: 180px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.image-asset-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #111827;
+}
+
+.image-asset-body {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.72rem;
+}
+
+.image-asset-body strong,
+.image-asset-body span,
+.image-asset-body p {
+  overflow-wrap: anywhere;
+}
+
+.image-asset-body p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.rights-pill {
+  justify-self: start;
+  border: 1px solid #d6e2ea;
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 0.12rem 0.48rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.rights-pill-licensed {
+  border-color: #b9e6ce;
+  background: #e3f6ec;
+  color: var(--success);
+}
+
+.rights-pill-needs_review {
+  border-color: #f3d68d;
+  background: #fff4d8;
+  color: var(--warning);
+}
+
+.rights-pill-reference_only,
+.rights-pill-unknown {
+  color: var(--muted);
+}
+
+.package-preflight-list,
+.package-output-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.package-preflight-list div {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fafafa;
+  padding: 0.45rem 0.55rem;
+}
+
+.package-preflight-list span,
+.package-output-list a {
+  color: var(--muted);
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.package-check-ok {
+  border-color: #b9e6ce !important;
+  background: #f2fbf6 !important;
+}
+
+.package-check-blocked {
+  border-color: #fca5a5 !important;
+  background: #fff7f7 !important;
+}
+
+.package-output-list {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fafafa;
+  padding: 0.55rem;
+}
+
+.package-output-list a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
 @media (max-width: 1180px) {
   .review-layout {
     grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
@@ -2079,14 +2401,20 @@ dd {
   .asset-library-header,
   .queue-page-header,
   .package-flow-panel,
-  .wizard-footer {
+  .wizard-footer,
+  .draft-resume-panel,
+  .queue-next-actions,
+  .ai-clone-hint {
     display: grid;
   }
 
   .workflow-steps,
   .slot-selector,
   .template-filter-row,
-  .package-steps {
+  .package-steps,
+  .inline-field-action,
+  .template-summary-grid,
+  .failure-detail-grid {
     grid-template-columns: 1fr;
   }
 

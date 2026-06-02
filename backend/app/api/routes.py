@@ -1,4 +1,6 @@
 import hashlib
+import csv
+import io
 import json
 import re
 import shutil
@@ -2475,14 +2477,23 @@ def ordered_templates(db: Session, template_ids: List[int]) -> List[Template]:
 
 
 @router.get("/tasks", response_model=List[GenerationTaskRead])
-def list_tasks(db: Session = Depends(get_db)) -> List[GenerationTaskRead]:
-    return list(db.scalars(select(GenerationTask).order_by(GenerationTask.created_at.desc())))
+def list_tasks(request: Request, db: Session = Depends(get_db)) -> List[GenerationTaskRead]:
+    query = select(GenerationTask)
+    user = optional_user_from_request(request, db)
+    if user is not None:
+        query = query.where(GenerationTask.user_id == user.id)
+    return list(db.scalars(query.order_by(GenerationTask.created_at.desc())))
 
 
 @router.get("/tasks/{task_id}/events", response_model=List[TaskEventRead])
-def list_task_events(task_id: int, db: Session = Depends(get_db)) -> List[TaskEventRead]:
+def list_task_events(
+    task_id: int, request: Request, db: Session = Depends(get_db)
+) -> List[TaskEventRead]:
     task = db.get(GenerationTask, task_id)
     if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    user = optional_user_from_request(request, db)
+    if user is not None and task.user_id != user.id:
         raise HTTPException(status_code=404, detail="Task not found")
     return list(
         db.scalars(
@@ -3173,8 +3184,14 @@ def list_outputs(db: Session = Depends(get_db)) -> List[OutputVideoRead]:
 
 
 @router.get("/outputs/review", response_model=List[OutputReviewRead])
-def list_outputs_for_review(db: Session = Depends(get_db)) -> List[OutputReviewRead]:
-    outputs = list(db.scalars(select(OutputVideo).order_by(OutputVideo.created_at.desc())))
+def list_outputs_for_review(
+    request: Request, db: Session = Depends(get_db)
+) -> List[OutputReviewRead]:
+    query = select(OutputVideo).join(GenerationTask)
+    user = optional_user_from_request(request, db)
+    if user is not None:
+        query = query.where(GenerationTask.user_id == user.id)
+    outputs = list(db.scalars(query.order_by(OutputVideo.created_at.desc())))
     return [output_review_payload(output) for output in outputs]
 
 
@@ -3276,6 +3293,7 @@ def download_production_run_package(
     if not seed_path.exists():
         raise HTTPException(status_code=404, detail="Seed video file not found")
 
+    review_rows = []
     with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.write(seed_path, f"seed/{safe_archive_name(production_run.asset.original_filename)}")
         for output in approved_outputs:
@@ -3286,6 +3304,52 @@ def download_production_run_package(
                 f"task-{output.task_id}-{output.task.template.name}-{output.filename}"
             )
             archive.write(output_path, f"approved/{filename}")
+            review_rows.append(
+                {
+                    "output_id": output.id,
+                    "task_id": output.task_id,
+                    "task_name": output.task.name,
+                    "template_id": output.task.template_id,
+                    "template_name": output.task.template.name,
+                    "review_status": output.review_status,
+                    "review_notes": output.review_notes or "",
+                    "review_feedback": json.dumps(
+                        output.review_feedback_json or {}, ensure_ascii=False
+                    ),
+                    "filename": filename,
+                }
+            )
+        manifest = {
+            "production_run_id": production_run.id,
+            "production_run_name": production_run.name,
+            "seed_filename": production_run.asset.original_filename,
+            "approved_output_count": len(review_rows),
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "safety_note": "Only approved videos are included. This package does not bypass platform review.",
+            "outputs": review_rows,
+        }
+        archive.writestr(
+            "metadata/manifest.json",
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+        )
+        csv_buffer = io.StringIO()
+        writer = csv.DictWriter(
+            csv_buffer,
+            fieldnames=[
+                "output_id",
+                "task_id",
+                "task_name",
+                "template_id",
+                "template_name",
+                "review_status",
+                "review_notes",
+                "review_feedback",
+                "filename",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(review_rows)
+        archive.writestr("metadata/review_records.csv", csv_buffer.getvalue())
 
     return FileResponse(
         package_path,

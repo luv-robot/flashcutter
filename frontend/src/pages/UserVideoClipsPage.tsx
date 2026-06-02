@@ -1,15 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { labelForAIAssetType, videoClipTypes } from '../api/assetDisplay';
 import { aiAssetFileUrl, api } from '../api/client';
 import type { AIAsset, AICloneJob, AICloneWorkflow } from '../api/types';
-
-const clipTypes = [
-  { value: 'hook', label: 'Hook' },
-  { value: 'cta', label: 'CTA' },
-  { value: 'broll', label: 'B-roll' },
-  { value: 'reaction', label: 'Reaction' },
-  { value: 'meme', label: 'Meme' },
-  { value: 'product_motion', label: 'Product motion' }
-];
 
 export function UserVideoClipsPage() {
   const [clips, setClips] = useState<AIAsset[]>([]);
@@ -111,6 +103,14 @@ export function UserVideoClipsPage() {
   async function createCloneJob(event: FormEvent) {
     event.preventDefault();
     if (!referenceFile || !clonePrompt.trim()) return;
+    if (duration < 2 || duration > 8) {
+      setError('仿制片段时长需要在 2-8 秒之间。');
+      return;
+    }
+    if (referenceFile.type.startsWith('image/') && referenceFile.size > 10 * 1024 * 1024) {
+      setError('参考图片超过 10MB，请先压缩后再提交。');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -133,7 +133,7 @@ export function UserVideoClipsPage() {
       await refreshCloneJobs();
       await refreshClips();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '仿制任务没有创建成功');
+      setError(cloneErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -211,8 +211,8 @@ export function UserVideoClipsPage() {
   return (
     <section className="workspace-grid production-grid">
       <div className="panel">
-        <div className="panel-kicker">AI Clone</div>
-        <h2>仿制生成</h2>
+        <div className="panel-kicker">视频片段 / AI 仿制</div>
+        <h2>生成可复用视频片段</h2>
         <form className="form-stack" onSubmit={createCloneJob}>
           <label>
             片段标题
@@ -225,7 +225,7 @@ export function UserVideoClipsPage() {
           <label>
             片段用途
             <select value={cloneType} onChange={(event) => setCloneType(event.target.value)}>
-              {clipTypes.map((item) => (
+              {videoClipTypes.map((item) => (
                 <option key={item.value} value={item.value}>{item.label}</option>
               ))}
             </select>
@@ -291,6 +291,12 @@ export function UserVideoClipsPage() {
               onChange={(event) => setReferenceFile(event.target.files?.[0] ?? null)}
             />
           </label>
+          {referenceFile && (
+            <div className="ai-clone-hint">
+              <strong>{cloneInputHint(referenceFile)}</strong>
+              <span>生成成功后会自动进入“我的视频片段库”，可在生产批次里作为 Hook、B-roll 或 CTA 片段使用。</span>
+            </div>
+          )}
           {referenceFile?.type.startsWith('video/') && (
             <label>
               参考帧
@@ -348,9 +354,9 @@ export function UserVideoClipsPage() {
               />
             </label>
             <label>
-              片段用途
-              <select value={clipType} onChange={(event) => setClipType(event.target.value)}>
-                {clipTypes.map((item) => (
+            片段用途
+            <select value={clipType} onChange={(event) => setClipType(event.target.value)}>
+                {videoClipTypes.map((item) => (
                   <option key={item.value} value={item.value}>{item.label}</option>
                 ))}
               </select>
@@ -398,7 +404,7 @@ export function UserVideoClipsPage() {
         <div className="filter-row">
           <select value={filterType} onChange={(event) => setFilterType(event.target.value)}>
             <option value="">全部用途</option>
-            {clipTypes.map((item) => (
+            {videoClipTypes.map((item) => (
               <option key={item.value} value={item.value}>{item.label}</option>
             ))}
           </select>
@@ -465,7 +471,7 @@ export function UserVideoClipsPage() {
                     <div className="clip-edit-form">
                       <input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
                       <select value={editType} onChange={(event) => setEditType(event.target.value)}>
-                        {clipTypes.map((item) => (
+                        {videoClipTypes.map((item) => (
                           <option key={item.value} value={item.value}>{item.label}</option>
                         ))}
                       </select>
@@ -529,7 +535,7 @@ export function UserVideoClipsPage() {
 }
 
 function labelForType(value: string) {
-  return clipTypes.find((item) => item.value === value)?.label ?? value;
+  return labelForAIAssetType(value);
 }
 
 function formatDuration(value: number | null) {
@@ -549,6 +555,33 @@ function providerLabel(value: string) {
   if (value === 'mock_ai_clone') return '仿制';
   if (value === 'comfyui_ai_clone') return '仿制';
   return value;
+}
+
+function cloneInputHint(file: File) {
+  if (file.type.startsWith('image/')) {
+    return '图片参考将进入 image_clone_video_v1 工作流';
+  }
+  if (file.type.startsWith('video/')) {
+    return '视频参考会先自动取代表帧，再进入 video_reference_clone_v1 工作流';
+  }
+  return '参考文件会先做预检，再提交仿制工作流';
+}
+
+function cloneErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : '仿制任务没有创建成功';
+  if (message.includes('2-8') || message.includes('duration')) {
+    return '仿制片段时长需要在 2-8 秒之间。';
+  }
+  if (message.toLowerCase().includes('credits')) {
+    return '仿制额度不足或额度预检失败；当前任务未扣费，请稍后重试或联系管理员补充额度。';
+  }
+  if (message.toLowerCase().includes('worker')) {
+    return '仿制 worker 暂时不可用，任务没有提交成功；可以稍后重试。';
+  }
+  if (message.toLowerCase().includes('unsupported')) {
+    return '参考文件格式暂不支持，请换成常见图片或视频格式。';
+  }
+  return message;
 }
 
 function isActiveCloneStatus(status: string) {
