@@ -1,0 +1,17 @@
+{
+  "workflow_id": "image_clone_video_v1",
+  "version": "0.1.0",
+  "name": "原图仿制视频",
+  "mode": "image_to_video",
+  "provider": "comfyui",
+  "workflow_api_path": "workflows/ai_clone/image_clone_video_v1/workflow_api.json",
+  "bindings": {
+    "prompt": ["6", "inputs", "text"],
+    "negative_prompt": ["7", "inputs", "text"],
+    "reference_file": ["10", "inputs", "image"]
+  },
+  "estimated_credits": 8,
+  "estimated_seconds": 90,
+  "default_tags": ["clone", "image_to_video"],
+  "status": "draft"
+}

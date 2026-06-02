@@ -1,0 +1,36 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      FLASHCUTTER_APP_NAME: flashcutter
+      FLASHCUTTER_ENVIRONMENT: trial
+      FLASHCUTTER_DATABASE_URL: sqlite:////data/flashcutter.db
+      FLASHCUTTER_STORAGE_ROOT: /data/storage
+      FLASHCUTTER_DEFAULT_TEMPLATE_NAME: prod_pain_demo_cta_vertical
+      FLASHCUTTER_CORS_ORIGINS: ${FLASHCUTTER_CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      FLASHCUTTER_REQUIRE_AUTH: ${FLASHCUTTER_REQUIRE_AUTH:-true}
+      FLASHCUTTER_ALLOW_REGISTRATION: ${FLASHCUTTER_ALLOW_REGISTRATION:-true}
+    volumes:
+      - flashcutter-data:/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  flashcutter-data:

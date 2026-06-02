@@ -1,0 +1,32 @@
+.DS_Store
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Python caches and local runtime
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local media, generated outputs, and imports
+backend/storage/
+
+# Frontend dependencies and build outputs
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+
+# Logs and temporary files
+*.log
+tmp/
+temp/

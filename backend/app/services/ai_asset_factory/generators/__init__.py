@@ -1,0 +1,1 @@
+"""AI clip generator interfaces."""

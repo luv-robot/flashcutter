@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180" role="img" aria-labelledby="title desc">
+  <title id="title">Flashcutter logo</title>
+  <desc id="desc">Flashcutter wordmark with a sharp cat cutter icon.</desc>
+  <rect width="720" height="180" fill="#ffffff"/>
+  <g transform="translate(18 18) scale(0.56)">
+    <path fill="#111923" d="M32 18 88 76h80l56-58-18 118 24 30-54 20-28 44-20-29-31 29-17-44-54-20 24-30L32 18Z"/>
+    <path fill="#ffffff" d="M68 112 112 132 76 147Z"/>
+    <path fill="#ffffff" d="M188 112 144 132 180 147Z"/>
+    <path fill="#ffffff" d="M190 46 72 232 134 170 121 205 186 126 160 136Z"/>
+    <path fill="#ffbf1b" d="M52 158 83 178 52 208Z"/>
+  </g>
+  <text x="178" y="108" fill="#111923" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="64" font-weight="850" letter-spacing="-1">
+    Flashcutter
+  </text>
+  <rect x="181" y="126" width="86" height="8" rx="4" fill="#ffbf1b"/>
+</svg>

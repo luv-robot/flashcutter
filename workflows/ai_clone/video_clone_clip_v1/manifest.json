@@ -1,0 +1,24 @@
+{
+  "workflow_id": "video_clone_clip_v1",
+  "version": "0.1.0",
+  "name": "原视频仿制片段",
+  "mode": "video_to_video",
+  "provider": "comfyui",
+  "workflow_api_path": "workflows/ai_clone/video_clone_clip_v1/workflow_api.json",
+  "bindings": {
+    "prompt": ["4", "inputs", "text"],
+    "negative_prompt": ["5", "inputs", "text"],
+    "reference_file": ["3", "inputs", "image"],
+    "width": ["6", "inputs", "width"],
+    "height": ["6", "inputs", "height"],
+    "duration_frames": ["6", "inputs", "length"],
+    "reference_strength": ["6", "inputs", "strength"],
+    "sampling_steps": ["7", "inputs", "steps"],
+    "cfg": ["9", "inputs", "cfg"],
+    "frame_rate": ["11", "inputs", "frame_rate"]
+  },
+  "estimated_credits": 12,
+  "estimated_seconds": 150,
+  "default_tags": ["clone", "video_to_video"],
+  "status": "draft"
+}

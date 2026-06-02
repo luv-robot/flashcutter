@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Flashcutter icon</title>
+  <desc id="desc">A sharp geometric cat head split by a diagonal cutter slash with a small yellow flash accent.</desc>
+  <rect width="256" height="256" fill="#ffffff"/>
+  <path fill="#111923" d="M32 18 88 76h80l56-58-18 118 24 30-54 20-28 44-20-29-31 29-17-44-54-20 24-30L32 18Z"/>
+  <path fill="#ffffff" d="M68 112 112 132 76 147Z"/>
+  <path fill="#ffffff" d="M188 112 144 132 180 147Z"/>
+  <path fill="#ffffff" d="M190 46 72 232 134 170 121 205 186 126 160 136Z"/>
+  <path fill="#ffbf1b" d="M52 158 83 178 52 208Z"/>
+</svg>
