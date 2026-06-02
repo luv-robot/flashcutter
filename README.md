@@ -83,6 +83,7 @@ Template and component design notes:
 docs/template_system_v3.md
 docs/template_component_library.md
 docs/ad_platform_export_design.md
+docs/usability_improvement_plan_v2.md
 docs/comfyui_infra_options.md
 docs/ai_clone_development_plan.md
 docs/ai_clone_comfyui_workflow_build.md
