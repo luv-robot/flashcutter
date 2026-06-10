@@ -20,6 +20,10 @@ htmlcov/
 
 # Local media, generated outputs, and imports
 backend/storage/
+storage/
+data/template_element_miner/input/
+data/template_element_miner/output/
+data/template_element_miner/assets/
 
 # Frontend dependencies and build outputs
 frontend/node_modules/
