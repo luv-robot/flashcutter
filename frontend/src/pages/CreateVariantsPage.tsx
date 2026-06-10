@@ -93,7 +93,7 @@ export function CreateVariantsPage({
 }: CreateVariantsPageProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [step, setStep] = useState<WizardStep>('mode');
-  const [productionMode, setProductionMode] = useState<ProductionMode>('many_assets_one_template');
+  const [productionMode, setProductionMode] = useState<ProductionMode>('one_asset_many_templates');
   const [namePrefix, setNamePrefix] = useState('batch-video-variant');
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<number[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
@@ -498,7 +498,7 @@ export function CreateVariantsPage({
             <strong>{clipAssets.length}</strong>
           </div>
         </div>
-        <p className="muted-copy">当前默认流程：一批视频套同一个模板。</p>
+        <p className="muted-copy">首次试用默认流程：一个视频生成多版；批量套同一模板可在创建时切换。</p>
         <p className="rights-note">只使用已确认可商用的原始视频、片段、图片和配乐；本次参数不会写回模板方法。</p>
       </div>
 

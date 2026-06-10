@@ -45,7 +45,6 @@ export function UserVideoClipsPage() {
     setClips(
       await api.listAIAssets({
         asset_kind: 'video',
-        scope: 'private',
         asset_type: filterType || undefined,
         tag: filterTag.trim() || undefined
       })
@@ -396,8 +395,8 @@ export function UserVideoClipsPage() {
         <div className="panel-header">
           <div>
             <div className="panel-kicker">可复用片段</div>
-            <h2>我的视频片段库</h2>
-            <p>{clips.length} 个片段 · 上传和生成片段统一管理 · {formatSize(totalSize)}</p>
+            <h2>视频片段库</h2>
+            <p>{clips.length} 个片段 · 系统素材、上传和生成片段统一管理 · {formatSize(totalSize)}</p>
           </div>
           <button className="secondary-action" onClick={refreshClips}>刷新</button>
         </div>
