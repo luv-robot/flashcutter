@@ -32,6 +32,129 @@ export function templateBadge(template: Template): string {
   return template.is_builtin ? '内置' : `v${template.version}`;
 }
 
+export function templatePlanCategory(template: Template): string {
+  const spec = template.json_spec;
+  if (spec.schema_version === 3) {
+    const labels: Record<string, string> = {
+      hook_expansion: 'Hook 扩量',
+      packaging: '品牌包装',
+      brand_packaging: '统一品牌',
+      platform_dedup: '平台去重',
+      cta_expansion: 'CTA 强化'
+    };
+    const category = text(spec.category);
+    return labels[category] ?? (category || '方案包');
+  }
+  const goal = creativeGoal(template);
+  const title = text(goal.title);
+  if (/testimonial|proof|证据|证明/i.test(`${template.name} ${title}`)) return '证据强化';
+  if (/unboxing|steps|步骤|开箱/i.test(`${template.name} ${title}`)) return '产品步骤';
+  if (/hook|开场/i.test(`${template.name} ${title}`)) return 'Hook 扩量';
+  return '基础安全扩量';
+}
+
+export function templateExpectedOutcome(template: Template): string {
+  const spec = template.json_spec;
+  if (spec.schema_version === 3) {
+    const operations = Array.isArray(spec.operations) ? spec.operations : [];
+    const labels = operations
+      .map((operation) => {
+        const item = record(operation);
+        return text(item.label) || v3OperationLabel(text(item.type));
+      })
+      .filter(Boolean);
+    return labels.length > 0
+      ? labels.slice(0, 4).join(' + ')
+      : '按方案包规则生成可审核变体';
+  }
+
+  const blueprint = record(spec.blueprint);
+  const editing = record(blueprint.editing);
+  const stylePack = record(spec.style_pack);
+  const transformations = record(stylePack.transformations);
+  const pieces = [
+    text(editing.cut_style) ? '重组片段' : '',
+    text(transformations.visual_style) ? visualStyleLabel(text(transformations.visual_style)) : '',
+    text(transformations.transition_style) ? transitionLabel(text(transformations.transition_style)) : '',
+    numberValue(transformations.playback_speed)
+      ? `${numberValue(transformations.playback_speed)}x 节奏`
+      : '',
+    record(spec.copy_pack).name ? '叠字变体' : ''
+  ].filter(Boolean);
+  return pieces.join(' + ') || '生成一组低成本广告变体';
+}
+
+export function templateSuitableFor(template: Template): string[] {
+  const spec = template.json_spec;
+  if (spec.schema_version === 3) {
+    const requirements = record(spec.input_requirements);
+    const ratios = Array.isArray(requirements.accepted_seed_ratios)
+      ? requirements.accepted_seed_ratios.filter((item): item is string => typeof item === 'string')
+      : [];
+    const category = text(spec.category);
+    const items = [
+      text(spec.use_case),
+      numberValue(requirements.min_seed_duration_seconds)
+        ? `时长不少于 ${numberValue(requirements.min_seed_duration_seconds)} 秒的已授权视频`
+        : '已授权视频素材',
+      ratios.length > 0 ? `支持 ${ratios.join(' / ')} 素材比例` : ''
+    ].filter(Boolean);
+    if (category === 'hook_expansion') {
+      items.push('需要快速测试多种前三秒开场文案');
+    }
+    return uniqueNonEmpty(items).slice(0, 4);
+  }
+
+  const blueprint = record(spec.blueprint);
+  const contract = record(blueprint.production_contract);
+  const goal = record(blueprint.creative_goal);
+  return uniqueNonEmpty([
+    text(contract.use_case),
+    text(goal.audience) ? `面向${text(goal.audience)}` : '',
+    '已确认授权的真人实拍广告素材',
+    durationSuitableText(spec)
+  ]).slice(0, 4);
+}
+
+export function templateNotSuitableFor(template: Template): string[] {
+  const spec = template.json_spec;
+  if (spec.schema_version === 3) {
+    const category = text(spec.category);
+    const fields = runtimeFields(template);
+    const requiredAssets = fields.filter((field) => field.required && field.fieldType === 'asset');
+    const items = [
+      category === 'hook_expansion' ? '原片前三秒已经有密集字幕或强口播钩子' : '',
+      category === 'hook_expansion' ? '画面主体贴近顶部，新增开场字可能遮挡主体' : '',
+      requiredAssets.length > 0
+        ? `缺少${requiredAssets.map((field) => field.label).join('、')}`
+        : '',
+      '素材授权或品牌合规尚未确认'
+    ];
+    return uniqueNonEmpty(items).slice(0, 4);
+  }
+
+  const delivery = record(record(spec.render_preset).delivery);
+  const transformations = record(record(spec.style_pack).transformations);
+  const fit = text(delivery.fit);
+  const items = [
+    fit === 'cover' ? '主体靠近画面边缘，裁切风险高' : '',
+    record(spec.music).track_id || record(spec.music).mode === 'replace'
+      ? '强依赖原声口播且不能替换配乐'
+      : '',
+    text(transformations.transition_style) && text(transformations.transition_style) !== 'hard_cut'
+      ? '品牌规范不允许明显转场特效'
+      : '',
+    '素材授权或事实表述无法确认'
+  ];
+  return uniqueNonEmpty(items).slice(0, 4);
+}
+
+export function templateRequiredFieldLabels(template: Template): string[] {
+  return runtimeFields(template)
+    .filter((field) => field.required)
+    .map((field) => field.label);
+}
+
 function durationSummary(editing: AnyRecord): string {
   const duration = numberValue(editing.target_duration_seconds);
   return duration ? `目标 ${duration} 秒` : '';
@@ -107,6 +230,64 @@ function text(value: unknown): string {
 
 function numberValue(value: unknown): number | null {
   return typeof value === 'number' ? value : null;
+}
+
+type RuntimeFieldDisplay = {
+  label: string;
+  required: boolean;
+  fieldType: string;
+};
+
+function runtimeFields(template: Template): RuntimeFieldDisplay[] {
+  const fields = template.json_spec.runtime_fields;
+  if (!Array.isArray(fields)) return [];
+  return fields
+    .filter((field): field is AnyRecord => Boolean(field) && typeof field === 'object')
+    .map((field) => ({
+      label: text(field.label) || text(field.key) || '本次字段',
+      required: field.required === true,
+      fieldType: text(field.field_type)
+    }));
+}
+
+function durationSuitableText(spec: AnyRecord): string {
+  const editing = record(record(spec.blueprint).editing);
+  const duration = numberValue(editing.target_duration_seconds);
+  return duration ? `适合约 ${duration} 秒左右的短视频试生产` : '';
+}
+
+function visualStyleLabel(value: string): string {
+  const labels: Record<string, string> = {
+    natural: '自然原片',
+    clean_ad: '清爽广告',
+    warm_lifestyle: '暖调生活方式',
+    cool_tech: '冷调科技感',
+    punchy_social: '高冲击社媒感',
+    soft_beauty: '柔和美颜感'
+  };
+  return labels[value] ?? value;
+}
+
+function transitionLabel(value: string): string {
+  const labels: Record<string, string> = {
+    hard_cut: '硬切',
+    flash_white: '闪白',
+    flash_black: '闪黑',
+    soft_fade: '轻淡入'
+  };
+  return labels[value] ?? value;
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value) => {
+      if (seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
 }
 
 function readableName(value: string): string {

@@ -22,6 +22,14 @@ type ReviewGroup = {
   outputs: OutputReview[];
 };
 
+type ChangeRequestDraft = {
+  id: string;
+  category: string;
+  target: string;
+  request: string;
+  priority: string;
+};
+
 const reviewActions = [
   { status: 'approved', label: '通过', helper: '保留该成片用于投放测试。' },
   { status: 'needs_changes', label: '要求修改', helper: '记录反馈，用于生成下一版变体。' },
@@ -39,6 +47,75 @@ const changeCategories = [
   { value: 'other', label: '其他' }
 ];
 
+const feedbackReasonPresets: Array<Omit<ChangeRequestDraft, 'id'>> = [
+  {
+    category: 'copy',
+    target: '开场文字',
+    request: '开场钩子不够直接，下一版强化前三秒利益点或结果前置。',
+    priority: 'high'
+  },
+  {
+    category: 'asset_selection',
+    target: '产品镜头',
+    request: '产品出现太晚，下一版把产品露出或关键动作提前。',
+    priority: 'high'
+  },
+  {
+    category: 'copy',
+    target: '字幕',
+    request: '字幕不够易读，下一版放大字号、减少字数或调整背景遮罩。',
+    priority: 'medium'
+  },
+  {
+    category: 'music',
+    target: '配乐',
+    request: '配乐和画面氛围不匹配，下一版更换为更贴近素材节奏的配乐。',
+    priority: 'medium'
+  },
+  {
+    category: 'pacing',
+    target: '剪辑节奏',
+    request: '节奏偏慢，下一版压缩开头停顿并提高前半段信息密度。',
+    priority: 'medium'
+  },
+  {
+    category: 'crop',
+    target: '画面裁切',
+    request: '裁切挡住主体或产品，下一版改用更保守的画面适配。',
+    priority: 'high'
+  },
+  {
+    category: 'copy',
+    target: 'CTA',
+    request: '收口行动提示不明显，下一版强化结尾 CTA。',
+    priority: 'medium'
+  },
+  {
+    category: 'template',
+    target: '变体差异',
+    request: '画面变化太小，下一版提高开头、字幕或节奏变化幅度。',
+    priority: 'medium'
+  },
+  {
+    category: 'template',
+    target: '广告感',
+    request: '不像广告素材，下一版增强产品卖点和转化收口。',
+    priority: 'medium'
+  },
+  {
+    category: 'template',
+    target: '广告感',
+    request: '太像硬广，下一版降低包装感，保留更多原生实拍质感。',
+    priority: 'medium'
+  },
+  {
+    category: 'other',
+    target: '事实与权利',
+    request: '存在事实表述或素材授权风险，下一版先复核文案和素材来源。',
+    priority: 'high'
+  }
+];
+
 export function ReviewOutputsPage({
   outputs,
   assets,
@@ -52,9 +129,7 @@ export function ReviewOutputsPage({
   const [selected, setSelected] = useState<OutputReview | null>(null);
   const [notes, setNotes] = useState('');
   const [reviewerName, setReviewerName] = useState('');
-  const [changeRequest, setChangeRequest] = useState('');
-  const [changeCategory, setChangeCategory] = useState('other');
-  const [changeTarget, setChangeTarget] = useState('');
+  const [changeRequests, setChangeRequests] = useState<ChangeRequestDraft[]>([]);
   const [priority, setPriority] = useState('');
   const [tags, setTags] = useState('');
   const [showRenderPlan, setShowRenderPlan] = useState(false);
@@ -115,16 +190,34 @@ export function ReviewOutputsPage({
 
   function hydrateFeedback(output: OutputReview | null) {
     const feedback = output?.review_feedback ?? {};
-    const firstStructuredRequest = Array.isArray(feedback.change_requests)
-      ? feedback.change_requests.find(
+    const structuredRequests = Array.isArray(feedback.change_requests)
+      ? feedback.change_requests.filter(
           (item): item is Record<string, unknown> =>
             item !== null && typeof item === 'object' && !Array.isArray(item)
         )
-      : null;
+      : [];
     setReviewerName(String(feedback.reviewer_name ?? ''));
-    setChangeRequest(String(firstStructuredRequest?.request ?? feedback.change_request ?? ''));
-    setChangeCategory(String(firstStructuredRequest?.category ?? 'other'));
-    setChangeTarget(String(firstStructuredRequest?.target ?? ''));
+    setChangeRequests(
+      structuredRequests.length > 0
+        ? structuredRequests.map((request, index) => ({
+            id: `saved-${output?.output_id ?? 'output'}-${index}`,
+            category: String(request.category ?? 'other'),
+            target: String(request.target ?? ''),
+            request: String(request.request ?? ''),
+            priority: String(request.priority ?? '')
+          }))
+        : feedback.change_request
+          ? [
+              {
+                id: `legacy-${output?.output_id ?? 'output'}`,
+                category: 'other',
+                target: '',
+                request: String(feedback.change_request),
+                priority: String(feedback.priority ?? '')
+              }
+            ]
+          : []
+    );
     setPriority(String(feedback.priority ?? ''));
     setTags(Array.isArray(feedback.tags) ? feedback.tags.join(', ') : '');
   }
@@ -133,21 +226,13 @@ export function ReviewOutputsPage({
     if (!selected) return;
     setBusy(true);
     try {
+      const normalizedRequests = normalizedChangeRequests(changeRequests);
       const updated = await api.updateOutputReview(selected.output_id, {
         review_status: reviewStatus,
         review_notes: notes,
         reviewer_name: reviewerName || undefined,
-        change_request: changeRequest || undefined,
-        change_requests: changeRequest.trim()
-          ? [
-              {
-                category: changeCategory,
-                request: changeRequest.trim(),
-                target: changeTarget.trim() || undefined,
-                priority: priority || undefined
-              }
-            ]
-          : [],
+        change_request: normalizedRequests[0]?.request,
+        change_requests: normalizedRequests,
         priority: priority || undefined,
         tags: tags
           .split(',')
@@ -168,6 +253,44 @@ export function ReviewOutputsPage({
     } finally {
       setBusy(false);
     }
+  }
+
+  function addPresetChangeRequest(preset: Omit<ChangeRequestDraft, 'id'>) {
+    setChangeRequests((current) => [
+      ...current,
+      {
+        ...preset,
+        id: `preset-${Date.now()}-${current.length}`
+      }
+    ]);
+    if (!priority && preset.priority) {
+      setPriority(preset.priority);
+    }
+  }
+
+  function addBlankChangeRequest() {
+    setChangeRequests((current) => [
+      ...current,
+      {
+        id: `blank-${Date.now()}-${current.length}`,
+        category: 'other',
+        target: '',
+        request: '',
+        priority: priority || ''
+      }
+    ]);
+  }
+
+  function updateChangeRequest(index: number, patch: Partial<ChangeRequestDraft>) {
+    setChangeRequests((current) =>
+      current.map((request, itemIndex) =>
+        itemIndex === index ? { ...request, ...patch } : request
+      )
+    );
+  }
+
+  function removeChangeRequest(index: number) {
+    setChangeRequests((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
   async function markGroupNeedsRevision() {
@@ -429,27 +552,6 @@ export function ReviewOutputsPage({
                 </select>
               </label>
               <label>
-                修改类型
-                <select
-                  value={changeCategory}
-                  onChange={(event) => setChangeCategory(event.target.value)}
-                >
-                  {changeCategories.map((category) => (
-                    <option key={category.value} value={category.value}>
-                      {category.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                修改对象
-                <input
-                  value={changeTarget}
-                  onChange={(event) => setChangeTarget(event.target.value)}
-                  placeholder="开头字幕、第三段、背景音乐"
-                />
-              </label>
-              <label>
                 标签
                 <input
                   value={tags}
@@ -458,15 +560,98 @@ export function ReviewOutputsPage({
                 />
               </label>
             </div>
-            <label>
-              修改要求
-              <textarea
-                value={changeRequest}
-                onChange={(event) => setChangeRequest(event.target.value)}
-                rows={3}
-                placeholder="记录下一版渲染需要执行的具体修改。"
-              />
-            </label>
+            <div className="structured-feedback-panel">
+              <div className="section-title-row">
+                <div>
+                  <h3>结构化修改原因</h3>
+                  <p>点选常用问题，也可以手动补充多条要求；保存后会进入本轮审核反馈。</p>
+                </div>
+                <button className="secondary-action" type="button" onClick={addBlankChangeRequest}>
+                  手动添加
+                </button>
+              </div>
+              <div className="feedback-reason-bank">
+                {feedbackReasonPresets.map((preset) => (
+                  <button
+                    key={`${preset.category}-${preset.target}-${preset.request}`}
+                    type="button"
+                    className="reason-chip"
+                    onClick={() => addPresetChangeRequest(preset)}
+                  >
+                    {shortReasonLabel(preset)}
+                  </button>
+                ))}
+              </div>
+              {changeRequests.length === 0 ? (
+                <p className="empty-state">如果选择“要求修改”或“拒绝”，建议至少添加一个结构化原因。</p>
+              ) : (
+                <div className="change-request-list">
+                  {changeRequests.map((request, index) => (
+                    <article key={request.id} className="change-request-card">
+                      <div className="change-request-fields">
+                        <label>
+                          类型
+                          <select
+                            value={request.category}
+                            onChange={(event) =>
+                              updateChangeRequest(index, { category: event.target.value })
+                            }
+                          >
+                            {changeCategories.map((category) => (
+                              <option key={category.value} value={category.value}>
+                                {category.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          对象
+                          <input
+                            value={request.target}
+                            onChange={(event) =>
+                              updateChangeRequest(index, { target: event.target.value })
+                            }
+                            placeholder="开头字幕、第三段、背景音乐"
+                          />
+                        </label>
+                        <label>
+                          优先级
+                          <select
+                            value={request.priority}
+                            onChange={(event) =>
+                              updateChangeRequest(index, { priority: event.target.value })
+                            }
+                          >
+                            <option value="">不设置</option>
+                            <option value="low">低</option>
+                            <option value="medium">中</option>
+                            <option value="high">高</option>
+                          </select>
+                        </label>
+                      </div>
+                      <label>
+                        修改要求
+                        <textarea
+                          value={request.request}
+                          onChange={(event) =>
+                            updateChangeRequest(index, { request: event.target.value })
+                          }
+                          rows={3}
+                          placeholder="记录下一版渲染需要执行的具体修改。"
+                        />
+                      </label>
+                      <button
+                        className="secondary-action danger-action"
+                        type="button"
+                        onClick={() => removeChangeRequest(index)}
+                      >
+                        删除
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
             {selected.reviewed_at && (
               <p className="notice">
                 最近审核：{new Date(selected.reviewed_at).toLocaleString()}
@@ -515,6 +700,35 @@ export function ReviewOutputsPage({
       </div>
     </section>
   );
+}
+
+function normalizedChangeRequests(requests: ChangeRequestDraft[]) {
+  return requests
+    .map((request) => ({
+      category: request.category || 'other',
+      request: request.request.trim(),
+      target: request.target.trim() || undefined,
+      priority: request.priority || undefined
+    }))
+    .filter((request) => request.request);
+}
+
+function shortReasonLabel(preset: Omit<ChangeRequestDraft, 'id'>): string {
+  const labels: Record<string, string> = {
+    开场文字: '开场弱',
+    产品镜头: '产品太晚',
+    字幕: '字幕难读',
+    配乐: '配乐不合适',
+    剪辑节奏: '节奏太慢',
+    画面裁切: '裁切挡主体',
+    CTA: 'CTA 不明显',
+    变体差异: '变化太小',
+    事实与权利: '事实/授权风险'
+  };
+  if (preset.target === '广告感') {
+    return preset.request.includes('不像广告') ? '不像广告' : '太像广告';
+  }
+  return labels[preset.target] ?? preset.target;
 }
 
 function groupOutputs(outputs: OutputReview[]): ReviewGroup[] {

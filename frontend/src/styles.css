@@ -1228,6 +1228,59 @@ dd {
   margin: 0.75rem 0;
 }
 
+.structured-feedback-panel {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.72rem;
+}
+
+.feedback-reason-bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+}
+
+.reason-chip {
+  border: 1px solid #d6e2ea;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  padding: 0.28rem 0.58rem;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.reason-chip:hover,
+.reason-chip:focus-visible {
+  border-color: #bde3ff;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.change-request-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.change-request-card {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid #d8e2ec;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 0.65rem;
+}
+
+.change-request-fields {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 0.82fr;
+  gap: 0.5rem;
+}
+
 .progress-cell {
   display: grid;
   gap: 0.25rem;
@@ -1915,6 +1968,43 @@ dd {
   background: var(--accent-soft);
 }
 
+.solution-picker-card {
+  gap: 0.55rem;
+  position: relative;
+}
+
+.solution-picker-card .solution-category {
+  margin-left: 1.4rem;
+}
+
+.solution-picker-card input {
+  position: absolute;
+  top: 0.9rem;
+  left: 0.8rem;
+}
+
+.compact-outcome {
+  padding: 0.48rem;
+}
+
+.compact-outcome strong,
+.solution-picker-fit small {
+  font-size: 0.8rem;
+}
+
+.solution-picker-fit {
+  grid-template-columns: 1fr;
+}
+
+.solution-picker-fit div {
+  display: grid;
+  gap: 0.12rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 0.45rem;
+}
+
 .wizard-split {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
@@ -2369,6 +2459,108 @@ dd {
   font-weight: 900;
 }
 
+.solution-package-card {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.solution-card-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.solution-card-title h3 {
+  margin-top: 0.18rem;
+}
+
+.solution-category,
+.template-version-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border: 1px solid #d6e2ea;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  padding: 0.12rem 0.48rem;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.solution-category {
+  border-color: #ffd7bd;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.solution-outcome {
+  display: grid;
+  gap: 0.18rem;
+  border: 1px solid #d8e7dc;
+  border-radius: 6px;
+  background: #f7fbf8;
+  padding: 0.58rem;
+}
+
+.solution-outcome span,
+.template-fit-block > span,
+.solution-picker-fit span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.solution-outcome strong {
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.template-fit-grid,
+.solution-picker-fit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.template-fit-block {
+  display: grid;
+  gap: 0.28rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 0.58rem;
+}
+
+.template-fit-block ul {
+  display: grid;
+  gap: 0.22rem;
+  margin: 0;
+  padding-left: 1rem;
+  color: #334155;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.advanced-controls-toggle {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: center;
+  grid-column: 1 / -1;
+  border: 1px solid #d8e2ec;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 0.62rem;
+}
+
+.advanced-controls-toggle span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
 .image-filter-row {
   grid-template-columns: minmax(180px, 260px);
 }
@@ -2597,8 +2789,15 @@ dd {
   .package-steps,
   .inline-field-action,
   .template-summary-grid,
+  .template-fit-grid,
+  .change-request-fields,
   .failure-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .advanced-controls-toggle,
+  .solution-card-title {
+    display: grid;
   }
 
   .modal-backdrop {

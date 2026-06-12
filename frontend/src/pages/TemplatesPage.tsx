@@ -1,6 +1,15 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { templateBadge, templateSummary, templateTitle } from '../api/templateDisplay';
+import {
+  templateBadge,
+  templateExpectedOutcome,
+  templateNotSuitableFor,
+  templatePlanCategory,
+  templateRequiredFieldLabels,
+  templateSuitableFor,
+  templateSummary,
+  templateTitle
+} from '../api/templateDisplay';
 import type { MusicTrack, Template } from '../api/types';
 import { JsonBlock } from '../components/JsonBlock';
 
@@ -140,6 +149,8 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showAdvancedJson, setShowAdvancedJson] = useState(false);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
+  const [templateIntensity, setTemplateIntensity] = useState<'conservative' | 'balanced' | 'aggressive'>('balanced');
   const [musicTracks, setMusicTracks] = useState<MusicTrack[]>([]);
   const [validation, setValidation] = useState<{
     normalized_spec: Record<string, unknown>;
@@ -228,6 +239,8 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
     setJsonSpec(JSON.stringify(defaultTemplate, null, 2));
     setError('');
     setValidation(null);
+    setShowAdvancedControls(false);
+    setTemplateIntensity('balanced');
   }
 
   function parsedSpec(): Record<string, unknown> {
@@ -404,6 +417,52 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
     ]);
   }
 
+  function applyTemplateIntensity(value: 'conservative' | 'balanced' | 'aggressive') {
+    setTemplateIntensity(value);
+    const presets = {
+      conservative: {
+        playback_speed: 1,
+        visual_style: 'natural',
+        motion_style: 'none',
+        transition_style: 'hard_cut',
+        texture_style: 'none',
+        brightness: 0,
+        contrast: 1.02,
+        saturation: 1.02,
+      },
+      balanced: {
+        playback_speed: 1.03,
+        visual_style: 'clean_ad',
+        motion_style: 'slow_push_in',
+        transition_style: 'hard_cut',
+        texture_style: 'none',
+        brightness: 0.03,
+        contrast: 1.08,
+        saturation: 1.12,
+      },
+      aggressive: {
+        playback_speed: 1.08,
+        visual_style: 'punchy_social',
+        motion_style: 'social_pulse',
+        transition_style: 'flash_white',
+        texture_style: 'subtle_grid',
+        brightness: 0.04,
+        contrast: 1.15,
+        saturation: 1.18,
+      }
+    }[value];
+    updateFields([
+      ['style_pack.transformations.playback_speed', presets.playback_speed],
+      ['style_pack.transformations.visual_style', presets.visual_style],
+      ['style_pack.transformations.motion_style', presets.motion_style],
+      ['style_pack.transformations.transition_style', presets.transition_style],
+      ['style_pack.transformations.texture_style', presets.texture_style],
+      ['style_pack.transformations.brightness', presets.brightness],
+      ['style_pack.transformations.contrast', presets.contrast],
+      ['style_pack.transformations.saturation', presets.saturation],
+    ]);
+  }
+
   return (
     <section className="workspace-grid">
       <div className="panel">
@@ -465,6 +524,19 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
               </select>
             </label>
             <label>
+              方案强度
+              <select
+                value={templateIntensity}
+                onChange={(event) =>
+                  applyTemplateIntensity(event.target.value as 'conservative' | 'balanced' | 'aggressive')
+                }
+              >
+                <option value="conservative">保守：少改动，优先稳定过审</option>
+                <option value="balanced">标准：适度节奏和画面增强</option>
+                <option value="aggressive">激进：更明显的节奏和开场冲击</option>
+              </select>
+            </label>
+            <label>
               片段秒数
               <input
                 type="number"
@@ -499,6 +571,20 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
                 }
               />
             </label>
+            <div className="advanced-controls-toggle">
+              <span>
+                默认只需要选择方案强度。画面风格、转场、亮度、配乐音量等参数给内部运营微调。
+              </span>
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={() => setShowAdvancedControls((current) => !current)}
+              >
+                {showAdvancedControls ? '收起高级参数' : '展开高级参数'}
+              </button>
+            </div>
+            {showAdvancedControls && (
+              <>
             <label>
               画面方向
               <select
@@ -701,6 +787,8 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
                 <small>配乐短于成片时循环，最终按视频时长截断。</small>
               </span>
             </label>
+              </>
+            )}
             <div className="form-note">
               素材授权默认在上传前由投放公司完成，本系统不做权利真实性判断。
             </div>
@@ -907,48 +995,78 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
       </div>
       <div className="panel wide">
         <div className="panel-header">
-          <h2>模板列表</h2>
+          <div>
+            <div className="panel-kicker">方案包库</div>
+            <h2>扩量方案包</h2>
+            <p>普通生产优先选择方案包；高级 JSON 仅用于内部运营排查和精细维护。</p>
+          </div>
           <button onClick={onRefresh}>刷新</button>
         </div>
         <div className="template-list">
-          {templates.map((template) => (
-            <article key={template.id} className="template-item">
-              <div>
-                <h3>{templateTitle(template)}</h3>
-                <p>
-                  {templateBadge(template)} · {templateSummary(template)}
-                </p>
-                <div className="template-summary-grid">
-                  <TemplateSummaryCell
-                    label="需要字段"
-                    value={runtimeFieldSummary(template)}
-                  />
-                  <TemplateSummaryCell
-                    label="执行动作"
-                    value={operationSummary(template)}
-                  />
-                  <TemplateSummaryCell
-                    label="输出规格"
-                    value={deliverySummary(template.json_spec)}
-                  />
-                  <TemplateSummaryCell
-                    label="审核重点"
-                    value={reviewChecklistSummary(template)}
-                  />
+          {templates.map((template) => {
+            const requiredFields = templateRequiredFieldLabels(template);
+            return (
+              <article key={template.id} className="template-item solution-package-card">
+                <div>
+                  <div className="solution-card-title">
+                    <div>
+                      <span className="solution-category">{templatePlanCategory(template)}</span>
+                      <h3>{templateTitle(template)}</h3>
+                    </div>
+                    <span className="template-version-badge">{templateBadge(template)}</span>
+                  </div>
+                  <p>{templateSummary(template)}</p>
+                  <div className="solution-outcome">
+                    <span>预计效果</span>
+                    <strong>{templateExpectedOutcome(template)}</strong>
+                  </div>
+                  <div className="template-fit-grid">
+                    <TemplateListBlock title="适合" items={templateSuitableFor(template)} />
+                    <TemplateListBlock title="不适合" items={templateNotSuitableFor(template)} />
+                  </div>
+                  <div className="template-summary-grid">
+                    <TemplateSummaryCell
+                      label="需要素材/字段"
+                      value={requiredFields.length > 0 ? requiredFields.join('、') : runtimeFieldSummary(template)}
+                    />
+                    <TemplateSummaryCell
+                      label="输出规格"
+                      value={deliverySummary(template.json_spec)}
+                    />
+                    <TemplateSummaryCell
+                      label="审核重点"
+                      value={reviewChecklistSummary(template)}
+                    />
+                  </div>
+                  <div className="button-row">
+                    <button onClick={() => editTemplate(template)}>编辑方案包</button>
+                  </div>
                 </div>
-                <div className="button-row">
-                  <button onClick={() => editTemplate(template)}>编辑</button>
-                </div>
-              </div>
-              <details className="template-json-details">
-                <summary>高级 JSON</summary>
-                <JsonBlock value={template.json_spec} />
-              </details>
-            </article>
-          ))}
+                <details className="template-json-details">
+                  <summary>高级 JSON</summary>
+                  <JsonBlock value={template.json_spec} />
+                </details>
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>
+  );
+}
+
+function TemplateListBlock({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="template-fit-block">
+      <span>{title}</span>
+      <ul>
+        {items.length > 0 ? (
+          items.map((item) => <li key={item}>{item}</li>)
+        ) : (
+          <li>按方案说明判断</li>
+        )}
+      </ul>
+    </div>
   );
 }
 

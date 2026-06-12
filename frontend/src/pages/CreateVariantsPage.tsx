@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { labelForAIAssetType, rightsStatusFromTags } from '../api/assetDisplay';
-import { templateBadge, templateSummary, templateTitle } from '../api/templateDisplay';
+import {
+  templateBadge,
+  templateExpectedOutcome,
+  templateNotSuitableFor,
+  templatePlanCategory,
+  templateRequiredFieldLabels,
+  templateSuitableFor,
+  templateSummary,
+  templateTitle
+} from '../api/templateDisplay';
 import type {
   AIAsset,
   Asset,
@@ -1094,19 +1103,32 @@ export function CreateVariantsPage({
                           清空筛选
                         </button>
                       </div>
-                    ) : filteredTemplates.map((template) => (
-                      <label key={template.id} className="template-method-card">
-                        <input
-                          type={productionMode === 'many_assets_one_template' ? 'radio' : 'checkbox'}
-                          checked={selectedTemplateIds.includes(template.id)}
-                          onChange={() => toggleTemplate(template.id)}
-                        />
-                        <span>{templateBadge(template)}</span>
-                        <strong>{templateTitle(template)}</strong>
-                        <small>会执行：{templateSummary(template)}</small>
-                        <small>适用场景：{template.description || '通用广告变体'}</small>
-                      </label>
-                    ))}
+                    ) : filteredTemplates.map((template) => {
+                      const requiredFields = templateRequiredFieldLabels(template);
+                      return (
+                        <label key={template.id} className="template-method-card solution-picker-card">
+                          <input
+                            type={productionMode === 'many_assets_one_template' ? 'radio' : 'checkbox'}
+                            checked={selectedTemplateIds.includes(template.id)}
+                            onChange={() => toggleTemplate(template.id)}
+                          />
+                          <span className="solution-category">{templatePlanCategory(template)} · {templateBadge(template)}</span>
+                          <strong>{templateTitle(template)}</strong>
+                          <small>{templateSummary(template)}</small>
+                          <div className="solution-outcome compact-outcome">
+                            <span>预计效果</span>
+                            <strong>{templateExpectedOutcome(template)}</strong>
+                          </div>
+                          <div className="solution-picker-fit">
+                            <TemplateFitPreview label="适合" items={templateSuitableFor(template)} />
+                            <TemplateFitPreview label="不适合" items={templateNotSuitableFor(template)} />
+                          </div>
+                          <small>
+                            需要准备：{requiredFields.length > 0 ? requiredFields.join('、') : '无需额外字段'}
+                          </small>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1383,7 +1405,7 @@ export function CreateVariantsPage({
 
             <div className="wizard-footer">
               <div className="wizard-selection-summary">
-                已选 {productionAssetIds.length} 个视频 · {selectedTemplateIds.length} 个模板
+                已选 {productionAssetIds.length} 个视频 · {selectedTemplateIds.length} 个方案包
               </div>
               <div className="button-row">
                 {step !== 'queue' && (
@@ -1456,6 +1478,15 @@ function SummaryTile({
     <div className={`summary-tile summary-tile-${tone}`}>
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function TemplateFitPreview({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <small>{items.slice(0, 2).join('；') || '按方案说明判断'}</small>
     </div>
   );
 }
