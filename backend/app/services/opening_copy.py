@@ -148,18 +148,23 @@ def request_chat_completion(
 ) -> str:
     import httpx
 
+    request_body = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": 1400,
+        "response_format": {"type": "json_object"},
+    }
+    if "deepseek." in base_url.lower() or "deepseek.com" in base_url.lower():
+        request_body["thinking"] = {"type": "disabled"}
+
     response = httpx.post(
         f"{base_url.rstrip('/')}/chat/completions",
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
-        json={
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": 1400,
-        },
+        json=request_body,
         timeout=timeout_seconds,
     )
     response.raise_for_status()

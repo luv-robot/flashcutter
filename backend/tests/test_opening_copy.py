@@ -73,3 +73,39 @@ def test_openai_compatible_missing_key_falls_back_to_rule_based() -> None:
     assert suggestions
     assert suggestions[0].source == "rule_based_fallback"
     assert "未配置 FLASHCUTTER_COPY_AI_API_KEY" in warnings[0]
+
+
+def test_request_chat_completion_enables_json_mode_for_deepseek(monkeypatch) -> None:
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"choices": [{"message": {"content": '{"suggestions":[]}'}}]}
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    content = opening_copy.request_chat_completion(
+        base_url="https://api.deepseek.com",
+        api_key="sk-test",
+        model="deepseek-v4-flash",
+        timeout_seconds=5,
+        messages=[{"role": "user", "content": "Return JSON only."}],
+        temperature=0.2,
+    )
+
+    assert content == '{"suggestions":[]}'
+    assert captured["url"] == "https://api.deepseek.com/chat/completions"
+    assert captured["json"]["response_format"] == {"type": "json_object"}
+    assert captured["json"]["thinking"] == {"type": "disabled"}
