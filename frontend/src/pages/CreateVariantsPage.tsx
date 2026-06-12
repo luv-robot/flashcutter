@@ -586,7 +586,7 @@ export function CreateVariantsPage({
   }
 
   function replaceStrongOpeningSuggestionsWithCustomText() {
-    const lines = splitOperatorLines(strongOpeningCustomText);
+    const lines = splitOpeningCopyLines(strongOpeningCustomText);
     if (lines.length === 0) {
       setStrongOpeningError('每行输入一条开场文字后再替换。');
       return;
@@ -599,7 +599,7 @@ export function CreateVariantsPage({
   }
 
   function mergeStrongOpeningCustomText() {
-    const lines = splitOperatorLines(strongOpeningCustomText);
+    const lines = splitOpeningCopyLines(strongOpeningCustomText);
     if (lines.length === 0) {
       setStrongOpeningError('每行输入一条开场文字后再合并。');
       return;
@@ -1907,9 +1907,16 @@ function formatDuration(value: number | null) {
 }
 
 function splitOperatorLines(value: string): string[] {
+  return dedupeAndTrimOperatorItems(value.split(/[\n,，;；]+/));
+}
+
+function splitOpeningCopyLines(value: string): string[] {
+  return dedupeAndTrimOperatorItems(value.split(/\n+/));
+}
+
+function dedupeAndTrimOperatorItems(items: string[]): string[] {
   const seen = new Set<string>();
-  return value
-    .split(/[\n,，;；]+/)
+  return items
     .map((item) => item.trim())
     .filter(Boolean)
     .map((item) => (item.length > 36 ? `${item.slice(0, 35)}…` : item))
