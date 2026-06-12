@@ -7,6 +7,10 @@ import type {
   CreativeReference,
   GenerationTask,
   MusicTrack,
+  StrongOpeningCopyRequest,
+  StrongOpeningCopyResponse,
+  StrongOpeningExpansionPreflight,
+  StrongOpeningExpansionRequest,
   OutputReview,
   ProductionRunPreflight,
   ProductionRunPackageEstimate,
@@ -444,6 +448,26 @@ export const api = {
     preflight_token?: string;
   }) =>
     request<GenerationTask[]>('/api/production-runs/enqueue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }),
+  suggestStrongOpeningCopy: (payload: StrongOpeningCopyRequest) =>
+    request<StrongOpeningCopyResponse>('/api/expansion-plans/strong-opening/copy-suggestions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }),
+  preflightStrongOpeningExpansion: (payload: StrongOpeningExpansionRequest) =>
+    request<StrongOpeningExpansionPreflight>('/api/expansion-runs/strong-opening/preflight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }),
+  enqueueStrongOpeningExpansion: (
+    payload: StrongOpeningExpansionRequest & { preflight_token?: string }
+  ) =>
+    request<GenerationTask[]>('/api/expansion-runs/strong-opening/enqueue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

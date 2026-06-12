@@ -388,6 +388,20 @@ class TemplateTextOverlay(BaseModel):
     font_color: str = "white"
     box_color: Optional[str] = "black@0.62"
     box_padding: int = Field(default=18, ge=0, le=80)
+    start_sec: Optional[float] = Field(default=None, ge=0)
+    end_sec: Optional[float] = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_time_window(self) -> "TemplateTextOverlay":
+        if self.end_sec is not None and self.start_sec is None:
+            raise ValueError("text_overlays.start_sec is required when end_sec is set")
+        if (
+            self.start_sec is not None
+            and self.end_sec is not None
+            and self.end_sec <= self.start_sec
+        ):
+            raise ValueError("text_overlays.end_sec must be greater than start_sec")
+        return self
 
 
 class TemplateTransformationsSpec(BaseModel):
@@ -951,6 +965,75 @@ class ProductionRunPreflightRead(BaseModel):
 
 class ProductionRunEnqueueRequest(ProductionRunPreflightRequest):
     preflight_token: Optional[str] = None
+
+
+class OpeningCopySuggestion(BaseModel):
+    id: str
+    text: str = Field(min_length=1, max_length=36)
+    angle: str
+    source: str = "rule_based"
+    risk_level: str = "low"
+    length_level: str = "short"
+    locked: bool = False
+
+
+class StrongOpeningCopyRequest(BaseModel):
+    asset_id: Optional[int] = None
+    target_count: int = Field(default=30, ge=1, le=120)
+    intensity: str = "balanced"
+    product_name: Optional[str] = Field(default=None, max_length=80)
+    selling_points: List[str] = Field(default_factory=list)
+    audience: Optional[str] = Field(default=None, max_length=80)
+    forbidden_terms: List[str] = Field(default_factory=list)
+    user_notes: Optional[str] = Field(default=None, max_length=600)
+    language: str = "zh-CN"
+
+    @field_validator("intensity")
+    @classmethod
+    def validate_intensity(cls, value: str) -> str:
+        allowed = {"conservative", "balanced", "aggressive"}
+        if value not in allowed:
+            raise ValueError(f"intensity must be one of: {', '.join(sorted(allowed))}")
+        return value
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, value: str) -> str:
+        allowed = {"zh-CN", "en"}
+        if value not in allowed:
+            raise ValueError(f"language must be one of: {', '.join(sorted(allowed))}")
+        return value
+
+
+class StrongOpeningCopyResponse(BaseModel):
+    provider: str
+    model: Optional[str] = None
+    suggestions: List[OpeningCopySuggestion]
+    warnings: List[str] = Field(default_factory=list)
+
+
+class StrongOpeningExpansionRequest(StrongOpeningCopyRequest):
+    opening_texts: List[str] = Field(default_factory=list)
+    suggestions: List[OpeningCopySuggestion] = Field(default_factory=list)
+    output_preset_id: Optional[str] = "vertical_9_16_cover"
+    name_prefix: str = "strong-opening-expansion"
+
+
+class StrongOpeningExpansionEnqueueRequest(StrongOpeningExpansionRequest):
+    preflight_token: Optional[str] = None
+
+
+class StrongOpeningExpansionPreflightRead(BaseModel):
+    preflight_token: str
+    summary: ProductionRunPreflightSummary
+    items: List[VariantPreflightItem]
+    suggestions: List[OpeningCopySuggestion]
+    runtime_values: Dict[str, Any] = Field(default_factory=dict)
+    output_preset_id: Optional[str] = None
+    name_prefix: str
+    template_id: int
+    template_name: str
+    warnings: List[str] = Field(default_factory=list)
 
 
 class TaskRunRequest(BaseModel):

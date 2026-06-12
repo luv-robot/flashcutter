@@ -7,7 +7,9 @@ import type {
   Asset,
   GenerationTask,
   MusicTrack,
+  OpeningCopySuggestion,
   ProductionRunPreflight,
+  StrongOpeningExpansionPreflight,
   Template,
   VariantPreflight
 } from '../api/types';
@@ -52,6 +54,7 @@ type RuntimeField = {
 
 type RuntimeValue = string | number | { asset_id: number };
 type PreflightItem = VariantPreflight['items'][number];
+type StrongOpeningIntensity = 'conservative' | 'balanced' | 'aggressive';
 
 const productionModes: Array<{
   id: ProductionMode;
@@ -117,11 +120,32 @@ export function CreateVariantsPage({
     Boolean(localStorage.getItem(DRAFT_KEY))
   );
   const [namePrefixTouched, setNamePrefixTouched] = useState(false);
+  const [strongOpeningOpen, setStrongOpeningOpen] = useState(false);
+  const [strongOpeningAssetId, setStrongOpeningAssetId] = useState<number | ''>(selectedAssetId ?? '');
+  const [strongOpeningTargetCount, setStrongOpeningTargetCount] = useState(30);
+  const [strongOpeningIntensity, setStrongOpeningIntensity] = useState<StrongOpeningIntensity>('balanced');
+  const [strongOpeningProductName, setStrongOpeningProductName] = useState('');
+  const [strongOpeningSellingPoints, setStrongOpeningSellingPoints] = useState('');
+  const [strongOpeningForbiddenTerms, setStrongOpeningForbiddenTerms] = useState('');
+  const [strongOpeningNotes, setStrongOpeningNotes] = useState('');
+  const [strongOpeningSuggestions, setStrongOpeningSuggestions] = useState<OpeningCopySuggestion[]>([]);
+  const [strongOpeningCustomText, setStrongOpeningCustomText] = useState('');
+  const [strongOpeningPreflight, setStrongOpeningPreflight] = useState<StrongOpeningExpansionPreflight | null>(null);
+  const [strongOpeningTasks, setStrongOpeningTasks] = useState<GenerationTask[]>([]);
+  const [strongOpeningBusy, setStrongOpeningBusy] = useState(false);
+  const [strongOpeningStatus, setStrongOpeningStatus] = useState('');
+  const [strongOpeningError, setStrongOpeningError] = useState('');
 
   const productionAssetIds = productionMode === 'one_asset_many_templates'
     ? selectedAssetId ? [selectedAssetId] : []
     : selectedAssetIds;
   const selectedAsset = assets.find((asset) => asset.id === productionAssetIds[0]);
+  const strongOpeningAsset = assets.find((asset) => asset.id === strongOpeningAssetId);
+  const strongOpeningTexts = strongOpeningSuggestions
+    .map((suggestion) => suggestion.text.trim())
+    .filter(Boolean);
+  const canRunStrongOpening =
+    Boolean(strongOpeningAssetId) && strongOpeningTexts.length > 0 && !strongOpeningBusy;
   const selectedTemplates = templates.filter((template) => selectedTemplateIds.includes(template.id));
   const runtimeFields = useMemo(
     () => runtimeFieldsForTemplates(selectedTemplates),
@@ -208,6 +232,12 @@ export function CreateVariantsPage({
       setSelectedAssetIds([selectedAssetId]);
     }
   }, [selectedAssetId, selectedAssetIds.length]);
+
+  useEffect(() => {
+    if (selectedAssetId && !strongOpeningAssetId) {
+      setStrongOpeningAssetId(selectedAssetId);
+    }
+  }, [selectedAssetId, strongOpeningAssetId]);
 
   useEffect(() => {
     if (!namePrefixTouched && autoNamePrefix) {
@@ -360,6 +390,163 @@ export function CreateVariantsPage({
     }
   }
 
+  async function generateStrongOpeningSuggestions() {
+    if (!strongOpeningAssetId) {
+      setStrongOpeningError('请先选择一条种子视频。');
+      return;
+    }
+    setStrongOpeningBusy(true);
+    setStrongOpeningError('');
+    setStrongOpeningStatus('正在生成强开场文字建议...');
+    try {
+      const result = await api.suggestStrongOpeningCopy({
+        ...strongOpeningBasePayload(),
+        asset_id: Number(strongOpeningAssetId)
+      });
+      setStrongOpeningSuggestions(result.suggestions);
+      setStrongOpeningPreflight(null);
+      setStrongOpeningTasks([]);
+      setStrongOpeningStatus(
+        `已生成 ${result.suggestions.length} 条建议。${result.warnings.length ? result.warnings.join('；') : '可以编辑后预检。'}`
+      );
+    } catch (err) {
+      setStrongOpeningError(err instanceof Error ? err.message : '生成开场建议失败');
+    } finally {
+      setStrongOpeningBusy(false);
+    }
+  }
+
+  async function preflightStrongOpeningExpansion() {
+    if (!canRunStrongOpening) return;
+    setStrongOpeningBusy(true);
+    setStrongOpeningError('');
+    setStrongOpeningStatus('正在预检强开场扩量任务...');
+    try {
+      const result = await api.preflightStrongOpeningExpansion(strongOpeningExpansionPayload());
+      setStrongOpeningPreflight(result);
+      setStrongOpeningStatus(
+        `预检完成：${result.summary.task_count} 个任务，${result.summary.blocked_count} 个阻塞。`
+      );
+    } catch (err) {
+      setStrongOpeningError(err instanceof Error ? err.message : '强开场预检失败');
+    } finally {
+      setStrongOpeningBusy(false);
+    }
+  }
+
+  async function enqueueStrongOpeningExpansion() {
+    if (!canRunStrongOpening) return;
+    setStrongOpeningBusy(true);
+    setStrongOpeningError('');
+    setStrongOpeningStatus('正在将强开场扩量任务加入队列...');
+    try {
+      const preflightResult = strongOpeningPreflight
+        ? strongOpeningPreflight
+        : await api.preflightStrongOpeningExpansion(strongOpeningExpansionPayload());
+      if (preflightResult.summary.blocked_count > 0) {
+        setStrongOpeningPreflight(preflightResult);
+        setStrongOpeningError('预检仍有阻塞项，请处理后再入队。');
+        return;
+      }
+      const tasks = await api.enqueueStrongOpeningExpansion({
+        ...strongOpeningExpansionPayload(),
+        preflight_token: preflightResult.preflight_token
+      });
+      setStrongOpeningPreflight(preflightResult);
+      setStrongOpeningTasks(tasks);
+      setCreatedTasks(tasks);
+      setStrongOpeningStatus(`已加入 ${tasks.length} 个强开场渲染任务。`);
+      await onRendered();
+    } catch (err) {
+      setStrongOpeningError(err instanceof Error ? err.message : '强开场入队失败');
+    } finally {
+      setStrongOpeningBusy(false);
+    }
+  }
+
+  function strongOpeningBasePayload() {
+    return {
+      target_count: strongOpeningTargetCount,
+      intensity: strongOpeningIntensity,
+      product_name: strongOpeningProductName.trim() || undefined,
+      selling_points: splitOperatorLines(strongOpeningSellingPoints),
+      forbidden_terms: splitOperatorLines(strongOpeningForbiddenTerms),
+      user_notes: strongOpeningNotes.trim() || undefined,
+      language: 'zh-CN' as const
+    };
+  }
+
+  function strongOpeningExpansionPayload() {
+    return {
+      ...strongOpeningBasePayload(),
+      asset_id: Number(strongOpeningAssetId),
+      opening_texts: strongOpeningTexts,
+      output_preset_id: outputPresetId,
+      name_prefix: strongOpeningNamePrefix()
+    };
+  }
+
+  function strongOpeningNamePrefix() {
+    const assetPart = strongOpeningAsset
+      ? cleanName(strongOpeningAsset.original_filename.replace(/\.[^.]+$/, '')).slice(0, 22)
+      : 'asset';
+    const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
+    return `${stamp}-strong-opening-${assetPart}`;
+  }
+
+  function resetStrongOpeningExecution() {
+    setStrongOpeningPreflight(null);
+    setStrongOpeningTasks([]);
+    setStrongOpeningStatus('');
+    setStrongOpeningError('');
+  }
+
+  function updateStrongOpeningSuggestion(index: number, text: string) {
+    setStrongOpeningSuggestions((current) =>
+      current.map((suggestion, itemIndex) =>
+        itemIndex === index
+          ? { ...suggestion, text, source: 'user', risk_level: 'manual_review' }
+          : suggestion
+      )
+    );
+    resetStrongOpeningExecution();
+  }
+
+  function removeStrongOpeningSuggestion(index: number) {
+    setStrongOpeningSuggestions((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    resetStrongOpeningExecution();
+  }
+
+  function replaceStrongOpeningSuggestionsWithCustomText() {
+    const lines = splitOperatorLines(strongOpeningCustomText);
+    if (lines.length === 0) {
+      setStrongOpeningError('每行输入一条开场文字后再替换。');
+      return;
+    }
+    setStrongOpeningSuggestions(customOpeningSuggestions(lines));
+    setStrongOpeningStatus(`已替换为 ${lines.length} 条自定义开场文字。`);
+    setStrongOpeningPreflight(null);
+    setStrongOpeningTasks([]);
+    setStrongOpeningError('');
+  }
+
+  function mergeStrongOpeningCustomText() {
+    const lines = splitOperatorLines(strongOpeningCustomText);
+    if (lines.length === 0) {
+      setStrongOpeningError('每行输入一条开场文字后再合并。');
+      return;
+    }
+    setStrongOpeningSuggestions((current) => {
+      const existing = new Set(current.map((suggestion) => suggestion.text.trim()));
+      const additions = customOpeningSuggestions(lines.filter((line) => !existing.has(line)));
+      return [...current, ...additions];
+    });
+    setStrongOpeningStatus(`已合并 ${lines.length} 条自定义开场文字。`);
+    setStrongOpeningPreflight(null);
+    setStrongOpeningTasks([]);
+    setStrongOpeningError('');
+  }
+
   function productionRuntimeValues() {
     const dynamicRuntimeValues = Object.entries(runtimeValues).reduce<Record<string, RuntimeValue>>(
       (result, [key, value]) => {
@@ -472,6 +659,20 @@ export function CreateVariantsPage({
 
   return (
     <section className="production-page">
+      <div className="one-click-expansion-panel">
+        <div>
+          <div className="panel-kicker">一键扩量</div>
+          <h2>强开场批量生成</h2>
+          <p>选择一条已授权视频，生成 AI 建议版开场文字，也可以用自己的文案替换，一次入队几十条强开场变体。</p>
+        </div>
+        <div className="one-click-expansion-actions">
+          <span>{strongOpeningTexts.length || strongOpeningTargetCount} 条目标变体</span>
+          <button className="primary-action" type="button" onClick={() => setStrongOpeningOpen(true)}>
+            开始强开场扩量
+          </button>
+        </div>
+      </div>
+
       <div className="workflow-hero panel">
         <div>
           <div className="panel-kicker">生产批次</div>
@@ -501,6 +702,247 @@ export function CreateVariantsPage({
         <p className="muted-copy">首次试用默认流程：一个视频生成多版；批量套同一模板可在创建时切换。</p>
         <p className="rights-note">只使用已确认可商用的原始视频、片段、图片和配乐；本次参数不会写回模板方法。</p>
       </div>
+
+      {strongOpeningOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="modal-panel strong-opening-modal" role="dialog" aria-modal="true">
+            <div className="modal-header">
+              <div>
+                <div className="panel-kicker">强开场扩量方案</div>
+                <h2>把一条视频扩成多条开场变体</h2>
+                <p>系统生成建议文案后，你可以逐条修改，或用自己的每行文案替换。</p>
+              </div>
+              <button className="secondary-action" type="button" onClick={() => setStrongOpeningOpen(false)}>
+                关闭
+              </button>
+            </div>
+
+            <div className="strong-opening-grid">
+              <aside className="strong-opening-config">
+                <label>
+                  种子视频
+                  <select
+                    value={strongOpeningAssetId}
+                    onChange={(event) => {
+                      const nextId = event.target.value ? Number(event.target.value) : '';
+                      setStrongOpeningAssetId(nextId);
+                      if (nextId) onSelectAsset(Number(nextId));
+                      resetStrongOpeningExecution();
+                    }}
+                  >
+                    <option value="">选择已授权视频</option>
+                    {assets.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        #{asset.id} {asset.original_filename}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="strong-opening-controls">
+                  <label>
+                    目标数量
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      value={strongOpeningTargetCount}
+                      onChange={(event) => {
+                        setStrongOpeningTargetCount(Math.max(1, Math.min(120, Number(event.target.value) || 1)));
+                        resetStrongOpeningExecution();
+                      }}
+                    />
+                  </label>
+                  <label>
+                    激进程度
+                    <select
+                      value={strongOpeningIntensity}
+                      onChange={(event) => {
+                        setStrongOpeningIntensity(event.target.value as StrongOpeningIntensity);
+                        resetStrongOpeningExecution();
+                      }}
+                    >
+                      <option value="conservative">保守</option>
+                      <option value="balanced">标准</option>
+                      <option value="aggressive">强刺激</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label>
+                  商品 / 项目名
+                  <input
+                    value={strongOpeningProductName}
+                    onChange={(event) => {
+                      setStrongOpeningProductName(event.target.value);
+                      resetStrongOpeningExecution();
+                    }}
+                    placeholder="例如 FlashCutter"
+                  />
+                </label>
+                <label>
+                  卖点 / 痛点
+                  <textarea
+                    value={strongOpeningSellingPoints}
+                    onChange={(event) => {
+                      setStrongOpeningSellingPoints(event.target.value);
+                      resetStrongOpeningExecution();
+                    }}
+                    rows={4}
+                    placeholder={'每行一个，例如：\n前三秒更清楚\n低成本批量扩量'}
+                  />
+                </label>
+                <label>
+                  禁用词
+                  <textarea
+                    value={strongOpeningForbiddenTerms}
+                    onChange={(event) => {
+                      setStrongOpeningForbiddenTerms(event.target.value);
+                      resetStrongOpeningExecution();
+                    }}
+                    rows={3}
+                    placeholder="每行一个，不希望出现在文案里"
+                  />
+                </label>
+                <label>
+                  备注
+                  <textarea
+                    value={strongOpeningNotes}
+                    onChange={(event) => {
+                      setStrongOpeningNotes(event.target.value);
+                      resetStrongOpeningExecution();
+                    }}
+                    rows={3}
+                    placeholder="运营要求、品牌语气、要避开的说法"
+                  />
+                </label>
+                <button
+                  className="primary-action"
+                  type="button"
+                  onClick={generateStrongOpeningSuggestions}
+                  disabled={!strongOpeningAssetId || strongOpeningBusy}
+                >
+                  {strongOpeningBusy ? '处理中...' : '生成 AI 建议版'}
+                </button>
+                {assets.length === 0 && (
+                  <button className="secondary-action" type="button" onClick={onGoToAssets}>
+                    去导入视频
+                  </button>
+                )}
+              </aside>
+
+              <div className="strong-opening-workspace">
+                <div className="section-title-row">
+                  <div>
+                    <h3>开场文字方案</h3>
+                    <p>每条文案会创建一个独立渲染任务；入队前会自动预检。</p>
+                  </div>
+                  <strong>{strongOpeningTexts.length}</strong>
+                </div>
+
+                <div className="custom-copy-panel">
+                  <label>
+                    我的文字方案
+                    <textarea
+                      value={strongOpeningCustomText}
+                      onChange={(event) => setStrongOpeningCustomText(event.target.value)}
+                      rows={4}
+                      placeholder={'每行一条，可直接替换 AI 建议：\n先看结果：低成本扩量\n别急着划走，关键在这里'}
+                    />
+                  </label>
+                  <div className="button-row">
+                    <button className="secondary-action" type="button" onClick={replaceStrongOpeningSuggestionsWithCustomText}>
+                      替换 AI 建议
+                    </button>
+                    <button className="secondary-action" type="button" onClick={mergeStrongOpeningCustomText}>
+                      合并到建议
+                    </button>
+                  </div>
+                </div>
+
+                {strongOpeningSuggestions.length === 0 ? (
+                  <p className="empty-state">先生成 AI 建议版，或粘贴自己的开场文字方案。</p>
+                ) : (
+                  <div className="opening-copy-list">
+                    {strongOpeningSuggestions.map((suggestion, index) => (
+                      <article key={`${suggestion.id}-${index}`} className="opening-copy-card">
+                        <div className="opening-copy-meta">
+                          <span>#{index + 1}</span>
+                          <strong>{openingAngleLabel(suggestion.angle)}</strong>
+                          <small>{openingSourceLabel(suggestion.source)} · {openingRiskLabel(suggestion.risk_level)}</small>
+                        </div>
+                        <textarea
+                          value={suggestion.text}
+                          maxLength={36}
+                          rows={2}
+                          onChange={(event) => updateStrongOpeningSuggestion(index, event.target.value)}
+                        />
+                        <button className="secondary-action" type="button" onClick={() => removeStrongOpeningSuggestion(index)}>
+                          删除
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                {strongOpeningPreflight && (
+                  <div className="strong-opening-preflight">
+                    <SummaryTile label="将创建" value={`${strongOpeningPreflight.summary.task_count} 个任务`} />
+                    <SummaryTile
+                      label="需要处理"
+                      value={`${strongOpeningPreflight.summary.blocked_count} 个`}
+                      tone={strongOpeningPreflight.summary.blocked_count ? 'danger' : 'neutral'}
+                    />
+                    <SummaryTile label="方案模板" value={strongOpeningPreflight.template_name} />
+                  </div>
+                )}
+
+                {strongOpeningStatus && <p className="notice">{strongOpeningStatus}</p>}
+                {strongOpeningError && (
+                  <div className="action-error">
+                    <strong>强开场扩量没有完成</strong>
+                    <p>{strongOpeningError}</p>
+                  </div>
+                )}
+
+                {strongOpeningTasks.length > 0 && (
+                  <div className="created-task-grid compact-task-grid">
+                    {strongOpeningTasks.slice(0, 6).map((task) => (
+                      <article key={task.id} className="created-task-card">
+                        <div>
+                          <strong>#{task.id} {task.name}</strong>
+                          <span>{task.progress_message || '已入队'}</span>
+                        </div>
+                        <StatusBadge value={task.status} />
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="wizard-footer">
+              <div className="wizard-selection-summary">
+                {strongOpeningAsset ? strongOpeningAsset.original_filename : '未选择视频'} · {strongOpeningTexts.length} 条开场文字
+              </div>
+              <div className="button-row">
+                <button className="secondary-action" type="button" onClick={preflightStrongOpeningExpansion} disabled={!canRunStrongOpening}>
+                  {strongOpeningBusy ? '预检中...' : '运行预检'}
+                </button>
+                <button className="primary-action" type="button" onClick={enqueueStrongOpeningExpansion} disabled={!canRunStrongOpening}>
+                  {strongOpeningBusy ? '入队中...' : '一键入队'}
+                </button>
+                <button className="secondary-action" type="button" onClick={onGoToQueue}>
+                  队列与失败
+                </button>
+                <button className="secondary-action" type="button" onClick={onGoToReview}>
+                  前往审核
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
 
       {dialogOpen && (
         <div className="modal-backdrop" role="presentation">
@@ -1258,6 +1700,65 @@ function labelForType(value: string) {
   return labels[value] ?? value;
 }
 
+function openingAngleLabel(value: string) {
+  const labels: Record<string, string> = {
+    result_first: '结果前置',
+    pain_first: '痛点前置',
+    proof_demo: '证据演示',
+    curiosity: '悬念开场',
+    product_focus: '产品强化',
+    pattern_break: '打断惯性',
+    custom: '用户自定义'
+  };
+  return labels[value] ?? value;
+}
+
+function openingSourceLabel(value: string) {
+  const labels: Record<string, string> = {
+    rule_based: 'AI 建议',
+    rule_based_fallback: 'AI 建议',
+    openai: 'AI 模型建议',
+    openai_compatible: 'AI 模型建议',
+    user: '手动编辑'
+  };
+  return labels[value] ?? value;
+}
+
+function openingRiskLabel(value: string) {
+  const labels: Record<string, string> = {
+    low: '低风险',
+    medium: '中风险',
+    manual_review: '需人工复核'
+  };
+  return labels[value] ?? value;
+}
+
 function formatDuration(value: number | null) {
   return value ? `${value.toFixed(1)}s` : '时长未知';
+}
+
+function splitOperatorLines(value: string): string[] {
+  const seen = new Set<string>();
+  return value
+    .split(/[\n,，;；]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => (item.length > 36 ? `${item.slice(0, 35)}…` : item))
+    .filter((item) => {
+      if (seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
+function customOpeningSuggestions(lines: string[]): OpeningCopySuggestion[] {
+  return lines.map((line, index) => ({
+    id: `custom-${Date.now()}-${index}`,
+    text: line,
+    angle: 'custom',
+    source: 'user',
+    risk_level: 'manual_review',
+    length_level: line.length <= 18 ? 'short' : 'medium',
+    locked: false
+  }));
 }

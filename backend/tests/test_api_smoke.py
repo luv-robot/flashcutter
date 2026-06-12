@@ -880,6 +880,83 @@ def test_ai_asset_slot_binding_enters_preflight_and_render_plan(monkeypatch) -> 
     assert plan["clips"][0]["asset_id"] == ai_asset_id
 
 
+def test_strong_opening_expansion_suggests_preflights_and_enqueues(monkeypatch) -> None:
+    def fake_probe_media(path: Path) -> dict:
+        return {
+            "duration_seconds": 12.0,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        }
+
+    enqueued_task_ids = []
+
+    def fake_enqueue(task_id, runner):
+        enqueued_task_ids.append(task_id)
+
+    monkeypatch.setattr(routes, "probe_media", fake_probe_media)
+    monkeypatch.setattr(routes.task_queue, "enqueue", fake_enqueue)
+
+    with TestClient(app) as client:
+        upload_response = client.post(
+            "/api/assets/upload",
+            files={"file": ("strong-opening-source.mp4", b"fake-video", "video/mp4")},
+        )
+        assert upload_response.status_code == 200
+        asset_id = upload_response.json()["id"]
+
+        suggestion_response = client.post(
+            "/api/expansion-plans/strong-opening/copy-suggestions",
+            json={
+                "asset_id": asset_id,
+                "target_count": 5,
+                "intensity": "balanced",
+                "product_name": "FlashCutter",
+                "selling_points": ["前三秒更清楚", "低成本扩量"],
+                "forbidden_terms": ["免费"],
+            },
+        )
+        assert suggestion_response.status_code == 200
+        suggestions = suggestion_response.json()["suggestions"]
+        assert len(suggestions) == 5
+        assert all("免费" not in suggestion["text"] for suggestion in suggestions)
+
+        opening_texts = [suggestion["text"] for suggestion in suggestions[:3]]
+        expansion_payload = {
+            "asset_id": asset_id,
+            "target_count": 3,
+            "intensity": "balanced",
+            "opening_texts": opening_texts,
+            "output_preset_id": "vertical_9_16_cover",
+            "name_prefix": "strong-opening-test",
+        }
+        preflight_response = client.post(
+            "/api/expansion-runs/strong-opening/preflight",
+            json=expansion_payload,
+        )
+        assert preflight_response.status_code == 200
+        preflight = preflight_response.json()
+        assert preflight["summary"]["task_count"] == 3
+        assert preflight["summary"]["blocked_count"] == 0
+        assert preflight["suggestions"][0]["source"] == "user"
+        assert "强开场 #1" in preflight["items"][0]["title"]
+
+        enqueue_response = client.post(
+            "/api/expansion-runs/strong-opening/enqueue",
+            json={
+                **expansion_payload,
+                "preflight_token": preflight["preflight_token"],
+            },
+        )
+
+    assert enqueue_response.status_code == 200
+    tasks = enqueue_response.json()
+    assert len(tasks) == 3
+    assert enqueued_task_ids == [task["id"] for task in tasks]
+    assert [task["params_json"]["runtime_values"]["opening_hook_text"] for task in tasks] == opening_texts
+    assert tasks[0]["params_json"]["expansion"]["plan_id"] == "strong_opening"
+
+
 def test_output_review_workflow(monkeypatch) -> None:
     def fake_probe_media(path: Path) -> dict:
         return {

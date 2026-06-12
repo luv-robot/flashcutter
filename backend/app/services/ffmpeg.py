@@ -498,6 +498,12 @@ def _drawtext_filter(overlay: Dict[str, Any]) -> str:
                 f"boxborderw={_non_negative_int(overlay.get('box_padding') or 0, 'text_overlays.box_padding')}",
             ]
         )
+    if overlay.get("start_sec") is not None or overlay.get("end_sec") is not None:
+        start_sec = _bounded_float(overlay.get("start_sec"), 0.0, 86400.0)
+        end_sec = _bounded_float(overlay.get("end_sec"), 0.0, 86400.0)
+        if end_sec <= start_sec:
+            raise FFmpegError("text_overlays.end_sec must be greater than start_sec")
+        parts.append(f"enable='between(t,{start_sec:g},{end_sec:g})'")
     return ":".join(parts)
 
 

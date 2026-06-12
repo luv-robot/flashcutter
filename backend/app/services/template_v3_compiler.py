@@ -112,6 +112,14 @@ def v3_operation_labels(template: TemplateSpecV3) -> List[str]:
 
 
 def cover_region_for_operation(region: Optional[str], color: Optional[str]) -> TemplateCoverRegion:
+    if region == "opening_hook_zone":
+        return TemplateCoverRegion(
+            x=48,
+            y=86,
+            width=984,
+            height=230,
+            color=color or "black@0.54",
+        )
     if region == "bottom_caption_zone":
         return TemplateCoverRegion(
             x=0,
@@ -130,6 +138,18 @@ def cover_region_for_operation(region: Optional[str], color: Optional[str]) -> T
 
 
 def text_overlay_for_operation(text: str, style: Optional[str]) -> TemplateTextOverlay:
+    if style == "opening_hook":
+        return TemplateTextOverlay(
+            text=text,
+            x=72,
+            y=118,
+            font_size=60,
+            font_color="white",
+            box_color="black@0.66",
+            box_padding=20,
+            start_sec=0,
+            end_sec=3.2,
+        )
     if style == "mobile_readable":
         return TemplateTextOverlay(
             text=text,

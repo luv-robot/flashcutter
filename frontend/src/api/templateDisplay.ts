@@ -9,6 +9,9 @@ export function templateTitle(template: Template): string {
 }
 
 export function templateSummary(template: Template): string {
+  if (template.json_spec.schema_version === 3) {
+    return v3TemplateSummary(template);
+  }
   const goal = creativeGoal(template);
   const editing = record(record(template.json_spec.blueprint).editing);
   const delivery = record(record(template.json_spec.render_preset).delivery);
@@ -60,6 +63,36 @@ function recipeModuleSummary(template: Template): string {
   const preset = record(template.json_spec.render_preset);
   const style = record(template.json_spec.style_pack);
   return [text(preset.name), text(style.name)].filter(Boolean).join(' / ');
+}
+
+function v3TemplateSummary(template: Template): string {
+  const operations = Array.isArray(template.json_spec.operations)
+    ? template.json_spec.operations
+    : [];
+  const labels = operations.map((operation) => {
+    const item = record(operation);
+    return text(item.label) || v3OperationLabel(text(item.type));
+  }).filter(Boolean);
+  const preset = text(template.json_spec.output_preset_id);
+  return [
+    text(template.json_spec.category),
+    labels.slice(0, 3).join(' / '),
+    preset
+  ].filter(Boolean).join(' · ') || `方案包 #${template.id}`;
+}
+
+function v3OperationLabel(value: string): string {
+  const labels: Record<string, string> = {
+    resize_canvas: '输出规格',
+    text_placeholder: '本次文案',
+    cover_region: '安全区',
+    replace_music: '替换配乐',
+    prepend_clip: '前贴片',
+    append_clip: '后贴片',
+    overlay_logo: 'Logo',
+    overlay_frame: '图片框'
+  };
+  return labels[value] ?? value;
 }
 
 function record(value: unknown): AnyRecord {

@@ -310,6 +310,9 @@ COPY_PACKS = {
 }
 
 
+STRONG_OPENING_TEMPLATE_NAME = "prod_v3_strong_opening_text"
+
+
 RECOMMENDED_RECIPES = [
     {
         "name": "prod_problem_demo_cta_vertical_clean",
@@ -410,6 +413,52 @@ PRODUCTION_TEMPLATES = [
 
 
 V3_PRODUCTION_TEMPLATES = [
+    {
+        "name": STRONG_OPENING_TEMPLATE_NAME,
+        "description": "v3 expansion package: generate many variants by changing the first-screen opening text.",
+        "json_spec": {
+            "schema_version": 3,
+            "type": "video_modification_template",
+            "template_id": "strong_opening_text_v1",
+            "name": "强开场文字扩量",
+            "category": "hook_expansion",
+            "use_case": "把一条已授权视频低成本扩成多条强开场变体，优先测试前三秒留存。",
+            "input_requirements": {
+                "min_seed_duration_seconds": 3,
+                "accepted_seed_ratios": ["9:16", "1:1", "16:9", "original"],
+                "requires_audio": False,
+            },
+            "operations": [
+                {
+                    "type": "resize_canvas",
+                    "output_preset_id": "vertical_9_16_cover",
+                    "label": "竖版输出",
+                },
+                {
+                    "type": "text_placeholder",
+                    "field": "opening_hook_text",
+                    "label": "前三秒强开场文字",
+                    "region": "opening_hook_zone",
+                    "style": "opening_hook",
+                },
+            ],
+            "runtime_fields": [
+                {
+                    "key": "opening_hook_text",
+                    "label": "强开场文字",
+                    "field_type": "text",
+                    "max_length": 36,
+                    "required": True,
+                }
+            ],
+            "output_preset_id": "vertical_9_16_cover",
+            "review_checklist": [
+                "开场文字前三秒可读，且没有遮挡人物、产品或关键信息",
+                "文案没有夸大、绝对化或与原视频事实不一致",
+                "源视频仍然来自已授权素材，不含未确认版权内容",
+            ],
+        },
+    },
     {
         "name": "prod_v3_vertical_intro_outro_frame",
         "description": "v3 reusable method: vertical output with optional intro/outro clips and a required frame image slot.",

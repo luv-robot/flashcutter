@@ -87,6 +87,55 @@ export type ProductionRunPreflight = {
   name_prefix: string;
 };
 
+export type OpeningCopySuggestion = {
+  id: string;
+  text: string;
+  angle: string;
+  source: string;
+  risk_level: string;
+  length_level: string;
+  locked: boolean;
+};
+
+export type StrongOpeningCopyRequest = {
+  asset_id?: number;
+  target_count: number;
+  intensity: 'conservative' | 'balanced' | 'aggressive';
+  product_name?: string;
+  selling_points?: string[];
+  audience?: string;
+  forbidden_terms?: string[];
+  user_notes?: string;
+  language?: 'zh-CN' | 'en';
+};
+
+export type StrongOpeningCopyResponse = {
+  provider: string;
+  model: string | null;
+  suggestions: OpeningCopySuggestion[];
+  warnings: string[];
+};
+
+export type StrongOpeningExpansionRequest = StrongOpeningCopyRequest & {
+  opening_texts?: string[];
+  suggestions?: OpeningCopySuggestion[];
+  output_preset_id?: string;
+  name_prefix: string;
+};
+
+export type StrongOpeningExpansionPreflight = {
+  preflight_token: string;
+  summary: ProductionRunPreflight['summary'];
+  items: VariantPreflight['items'];
+  suggestions: OpeningCopySuggestion[];
+  runtime_values: Record<string, unknown>;
+  output_preset_id: string | null;
+  name_prefix: string;
+  template_id: number;
+  template_name: string;
+  warnings: string[];
+};
+
 export type Template = {
   id: number;
   name: string;

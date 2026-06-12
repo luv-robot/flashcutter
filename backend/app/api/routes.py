@@ -70,6 +70,7 @@ from app.schemas import (
     GenerationTaskCreate,
     GenerationTaskRead,
     MusicTrackRead,
+    OpeningCopySuggestion,
     OutputVideoRead,
     OutputReviewRead,
     OutputReviewUpdate,
@@ -82,6 +83,11 @@ from app.schemas import (
     RenderVariantsRequest,
     RenderPlanRead,
     SegmentRead,
+    StrongOpeningCopyRequest,
+    StrongOpeningCopyResponse,
+    StrongOpeningExpansionEnqueueRequest,
+    StrongOpeningExpansionPreflightRead,
+    StrongOpeningExpansionRequest,
     TaskRunRequest,
     TaskRunResponse,
     TaskEventRead,
@@ -97,6 +103,7 @@ from app.schemas import (
     VariantPreflightItem,
     VariantPreflightRead,
 )
+from app.services.opening_copy import opening_copy_suggestions, suggestion_id, trim_copy
 from app.services.template_compiler import (
     compile_template_spec,
     template_warnings,
@@ -147,6 +154,7 @@ from app.services.storage import (
 )
 from app.services.task_queue import task_queue
 from app.services.text_detection import detect_text_regions
+from app.template_library import STRONG_OPENING_TEMPLATE_NAME
 
 router = APIRouter(prefix="/api")
 settings = get_settings()
@@ -2225,6 +2233,347 @@ def preflight_asset_variants(
         asset_duration_seconds=asset.duration_seconds,
         items=items,
     )
+
+
+@router.post(
+    "/expansion-plans/strong-opening/copy-suggestions",
+    response_model=StrongOpeningCopyResponse,
+)
+def suggest_strong_opening_copy(
+    payload: StrongOpeningCopyRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> StrongOpeningCopyResponse:
+    optional_user_from_request(request, db)
+    asset = db.get(Asset, payload.asset_id) if payload.asset_id is not None else None
+    if payload.asset_id is not None and asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    suggestions, warnings = opening_copy_suggestions(
+        payload,
+        settings=settings,
+        asset_filename=asset.original_filename if asset else None,
+    )
+    return StrongOpeningCopyResponse(
+        provider=settings.copy_ai_provider or "rule_based",
+        model=settings.copy_ai_model or None,
+        suggestions=suggestions,
+        warnings=warnings,
+    )
+
+
+@router.post(
+    "/expansion-runs/strong-opening/preflight",
+    response_model=StrongOpeningExpansionPreflightRead,
+)
+def preflight_strong_opening_expansion(
+    payload: StrongOpeningExpansionRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> StrongOpeningExpansionPreflightRead:
+    user = optional_user_from_request(request, db)
+    return build_strong_opening_expansion_preflight(
+        db=db,
+        payload=payload,
+        user_id=user.id if user else None,
+    )
+
+
+@router.post(
+    "/expansion-runs/strong-opening/enqueue",
+    response_model=List[GenerationTaskRead],
+)
+def enqueue_strong_opening_expansion(
+    payload: StrongOpeningExpansionEnqueueRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> List[GenerationTaskRead]:
+    user = optional_user_from_request(request, db)
+    preflight = build_strong_opening_expansion_preflight(
+        db=db,
+        payload=payload,
+        user_id=user.id if user else None,
+    )
+    if payload.preflight_token and payload.preflight_token != preflight.preflight_token:
+        raise HTTPException(status_code=400, detail="Preflight token does not match current plan")
+    if preflight.summary.blocked_count:
+        raise HTTPException(
+            status_code=400,
+            detail="这批强开场任务还不能入队：请先处理预检中的阻塞项。",
+        )
+
+    asset = db.get(Asset, payload.asset_id)
+    template = db.get(Template, preflight.template_id)
+    if asset is None or template is None:
+        raise HTTPException(status_code=404, detail="Asset or template not found")
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    safe_prefix = " ".join(payload.name_prefix.split()) or "strong-opening-expansion"
+    run_name = f"{timestamp} {safe_prefix}"
+    production_run = ProductionRun(
+        asset_id=asset.id,
+        name=run_name,
+        name_prefix=safe_prefix,
+    )
+    db.add(production_run)
+    db.flush()
+
+    tasks: List[GenerationTask] = []
+    for index, suggestion in enumerate(preflight.suggestions, start=1):
+        task = GenerationTask(
+            name=strong_opening_task_name(
+                run_name=run_name,
+                index=index,
+                suggestion=suggestion,
+            ),
+            user_id=user.id if user else None,
+            production_run_id=production_run.id,
+            revision_number=1,
+            asset_id=asset.id,
+            template_id=template.id,
+            params_json=strong_opening_task_params(
+                payload=payload,
+                suggestion=suggestion,
+                variant_index=index,
+                variant_count=len(preflight.suggestions),
+                preflight=preflight,
+            ),
+            status=TaskStatus.QUEUED.value,
+        )
+        db.add(task)
+        tasks.append(task)
+    db.commit()
+
+    for task in tasks:
+        db.refresh(task)
+        record_task_event(
+            db=db,
+            task=task,
+            status=task.status,
+            progress_percent=task.progress_percent,
+            message="Task created from strong opening expansion",
+            commit=False,
+        )
+        mark_task_progress(
+            db=db,
+            task=task,
+            status=TaskStatus.WAITING.value,
+            progress_percent=0,
+            progress_message="Waiting in render queue",
+            commit=False,
+        )
+    db.commit()
+    for task in tasks:
+        db.refresh(task)
+        task_queue.enqueue(task.id, run_queued_task_pipeline)
+    return tasks
+
+
+def build_strong_opening_expansion_preflight(
+    db: Session,
+    payload: StrongOpeningExpansionRequest,
+    user_id: Optional[int],
+) -> StrongOpeningExpansionPreflightRead:
+    if payload.asset_id is None:
+        raise HTTPException(status_code=400, detail="请选择一条种子视频。")
+    asset = db.get(Asset, payload.asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    template = strong_opening_template(db)
+    suggestions, plan_warnings = strong_opening_suggestions_for_payload(
+        payload=payload,
+        asset=asset,
+    )
+    template_v3 = TemplateSpecV3.model_validate(template.json_spec or {})
+    items: List[VariantPreflightItem] = []
+    for index, suggestion in enumerate(suggestions, start=1):
+        params_json = strong_opening_task_params(
+            payload=payload,
+            suggestion=suggestion,
+            variant_index=index,
+            variant_count=len(suggestions),
+            preflight=None,
+        )
+        spec = compile_template_json_spec(template.json_spec or {}, params_json)
+        warnings = template_warnings(spec)
+        missing_fields = v3_missing_runtime_fields(
+            template_v3,
+            (params_json.get("runtime_values") or {}),
+        )
+        operation_labels = v3_operation_labels(template_v3)
+        if template_v3.input_requirements.min_seed_duration_seconds and (
+            asset.duration_seconds or 0
+        ) < template_v3.input_requirements.min_seed_duration_seconds:
+            warnings.append("视频时长低于强开场方案建议的最小时长。")
+        if operation_labels:
+            warnings.extend([f"将执行：{', '.join(operation_labels)}"])
+        transformations = spec.transformations.model_dump(exclude_none=True)
+        estimated_clip_count = estimate_clip_count(
+            asset_duration=asset.duration_seconds,
+            segment_seconds=spec.segments.segment_seconds,
+            requested_count=spec.selection.count,
+            max_duration=spec.selection.max_total_duration,
+        )
+        estimated_duration = (
+            min(asset.duration_seconds or 0, estimated_clip_count * spec.segments.segment_seconds)
+            if asset.duration_seconds
+            else None
+        )
+        items.append(
+            VariantPreflightItem(
+                asset_id=asset.id,
+                asset_filename=asset.original_filename,
+                template_id=template.id,
+                template_name=template.name,
+                status="blocked" if missing_fields else ("warning" if warnings else "ready"),
+                title=f"强开场 #{index}: {suggestion.text}",
+                estimated_clip_count=estimated_clip_count,
+                estimated_duration_seconds=estimated_duration,
+                output_width=spec.output.width,
+                output_height=spec.output.height,
+                output_fps=spec.output.fps,
+                fit=spec.layout.fit,
+                cover_region_count=len(transformations.get("cover_regions") or []),
+                text_overlay_count=len(transformations.get("text_overlays") or []),
+                playback_speed=transformations.get("playback_speed"),
+                mute_audio=bool(transformations.get("mute_audio")),
+                warnings=warnings,
+                missing_fields=missing_fields,
+            )
+        )
+
+    ready_count = len([item for item in items if item.status == "ready"])
+    warning_count = len([item for item in items if item.status == "warning"])
+    blocked_count = len([item for item in items if item.status == "blocked"])
+    token_payload = {
+        "asset_id": payload.asset_id,
+        "opening_texts": [suggestion.text for suggestion in suggestions],
+        "intensity": payload.intensity,
+        "output_preset_id": payload.output_preset_id,
+        "name_prefix": payload.name_prefix,
+        "template_id": template.id,
+    }
+    return StrongOpeningExpansionPreflightRead(
+        preflight_token=hashlib.sha256(
+            json.dumps(token_payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest(),
+        summary=ProductionRunPreflightSummary(
+            asset_count=1,
+            template_count=1,
+            task_count=len(items),
+            ready_count=ready_count,
+            warning_count=warning_count,
+            blocked_count=blocked_count,
+        ),
+        items=items,
+        suggestions=suggestions,
+        runtime_values={
+            "opening_hook_texts": [suggestion.text for suggestion in suggestions],
+            "intensity": payload.intensity,
+        },
+        output_preset_id=payload.output_preset_id,
+        name_prefix=payload.name_prefix,
+        template_id=template.id,
+        template_name=template.name,
+        warnings=plan_warnings,
+    )
+
+
+def strong_opening_template(db: Session) -> Template:
+    template = db.scalar(
+        select(Template).where(Template.name == STRONG_OPENING_TEMPLATE_NAME)
+    )
+    if template is None:
+        raise HTTPException(
+            status_code=500,
+            detail="强开场内置模板尚未初始化，请重启后端或重新执行内置模板同步。",
+        )
+    return template
+
+
+def strong_opening_suggestions_for_payload(
+    payload: StrongOpeningExpansionRequest,
+    asset: Asset,
+) -> tuple[List[OpeningCopySuggestion], List[str]]:
+    warnings: List[str] = []
+    if payload.opening_texts:
+        suggestions = [
+            OpeningCopySuggestion(
+                id=suggestion_id(text),
+                text=text,
+                angle="custom",
+                source="user",
+                risk_level="manual_review",
+                length_level="short" if len(text) <= 18 else "medium",
+            )
+            for text in normalized_opening_texts(payload.opening_texts)
+        ]
+    elif payload.suggestions:
+        suggestions = [
+            suggestion.model_copy(update={"text": text})
+            for suggestion in payload.suggestions
+            for text in normalized_opening_texts([suggestion.text])
+        ]
+    else:
+        suggestions, warnings = opening_copy_suggestions(
+            payload,
+            settings=settings,
+            asset_filename=asset.original_filename,
+        )
+    if not suggestions:
+        raise HTTPException(status_code=400, detail="至少需要一条强开场文字。")
+    return suggestions[:120], warnings
+
+
+def normalized_opening_texts(values: List[str]) -> List[str]:
+    normalized: List[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = trim_copy(" ".join(str(value or "").strip().split()), 36)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        normalized.append(text)
+    return normalized
+
+
+def strong_opening_task_params(
+    payload: StrongOpeningExpansionRequest,
+    suggestion: OpeningCopySuggestion,
+    variant_index: int,
+    variant_count: int,
+    preflight: Optional[StrongOpeningExpansionPreflightRead],
+) -> dict:
+    output_preset_id = payload.output_preset_id or "vertical_9_16_cover"
+    params = {
+        "runtime_values": {
+            "opening_hook_text": suggestion.text,
+            "output_preset_id": output_preset_id,
+        },
+        "output_preset_id": output_preset_id,
+        "expansion": {
+            "plan_id": "strong_opening",
+            "variant_index": variant_index,
+            "variant_count": variant_count,
+            "intensity": payload.intensity,
+            "copy_angle": suggestion.angle,
+            "copy_source": suggestion.source,
+            "copy_id": suggestion.id,
+        },
+    }
+    if preflight is not None:
+        params["production_run_preflight"] = preflight.model_dump(exclude_none=True)
+    return params
+
+
+def strong_opening_task_name(
+    run_name: str,
+    index: int,
+    suggestion: OpeningCopySuggestion,
+) -> str:
+    safe_text = " ".join(suggestion.text.split())
+    if len(safe_text) > 24:
+        safe_text = f"{safe_text[:23]}…"
+    return f"{run_name} - 强开场 {index:02d} - {safe_text}"
 
 
 @router.post("/production-runs/preflight", response_model=ProductionRunPreflightRead)

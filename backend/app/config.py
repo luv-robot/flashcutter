@@ -22,6 +22,11 @@ class Settings(BaseModel):
     comfyui_max_wait_seconds: float = 900.0
     ai_clone_image_workflow_path: str = ""
     ai_clone_video_workflow_path: str = ""
+    copy_ai_provider: str = "rule_based"
+    copy_ai_base_url: str = ""
+    copy_ai_api_key: str = ""
+    copy_ai_model: str = ""
+    copy_ai_timeout_seconds: float = 12.0
     cors_origins: List[str] = Field(
         default_factory=lambda: [
             "http://127.0.0.1:5173",
@@ -62,6 +67,17 @@ def get_settings() -> Settings:
         ai_clone_video_workflow_path=os.getenv(
             "FLASHCUTTER_AI_CLONE_VIDEO_WORKFLOW_PATH", ""
         ).strip(),
+        copy_ai_provider=os.getenv("FLASHCUTTER_COPY_AI_PROVIDER", "rule_based")
+        .strip()
+        .lower(),
+        copy_ai_base_url=os.getenv("FLASHCUTTER_COPY_AI_BASE_URL", "")
+        .strip()
+        .rstrip("/"),
+        copy_ai_api_key=os.getenv("FLASHCUTTER_COPY_AI_API_KEY", "").strip(),
+        copy_ai_model=os.getenv("FLASHCUTTER_COPY_AI_MODEL", "").strip(),
+        copy_ai_timeout_seconds=parse_float_env(
+            os.getenv("FLASHCUTTER_COPY_AI_TIMEOUT_SECONDS", "12"), 12.0
+        ),
         cors_origins=parse_csv_env(
             os.getenv(
                 "FLASHCUTTER_CORS_ORIGINS",
