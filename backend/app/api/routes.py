@@ -252,6 +252,36 @@ def current_user_from_request(request: Request, db: Session) -> User:
     return user
 
 
+def ensure_task_access(task: GenerationTask, request: Request, db: Session) -> Optional[User]:
+    user = optional_user_from_request(request, db)
+    if user is not None and task.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return user
+
+
+def ensure_output_access(output: OutputVideo, request: Request, db: Session) -> Optional[User]:
+    user = optional_user_from_request(request, db)
+    if user is not None and output.task.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Output video not found")
+    return user
+
+
+def ensure_production_run_access(
+    production_run: ProductionRun, request: Request, db: Session
+) -> Optional[User]:
+    user = optional_user_from_request(request, db)
+    if user is None:
+        return None
+    owns_run = db.scalar(
+        select(GenerationTask.id)
+        .where(GenerationTask.production_run_id == production_run.id)
+        .where(GenerationTask.user_id == user.id)
+    )
+    if owns_run is None:
+        raise HTTPException(status_code=404, detail="Production run not found")
+    return user
+
+
 def normalize_ai_asset_tags(tags: Optional[List[str]]) -> List[str]:
     normalized = []
     seen = set()
@@ -2083,7 +2113,7 @@ def render_asset_variants(
     )
     outputs = []
     for task in tasks:
-        task_result = run_task_pipeline(task.id, payload=None, db=db)
+        task_result = run_task_pipeline(task.id, request=request, payload=None, db=db)
         outputs.append(output_review_payload_by_id(db, task_result.output.id))
     return outputs
 
@@ -2841,9 +2871,7 @@ def list_task_events(
     task = db.get(GenerationTask, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    user = optional_user_from_request(request, db)
-    if user is not None and task.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Task not found")
+    ensure_task_access(task, request, db)
     return list(
         db.scalars(
             select(TaskEvent)
@@ -2854,7 +2882,13 @@ def list_task_events(
 
 
 @router.post("/tasks/{task_id}/render-plan", response_model=RenderPlanRead)
-def build_render_plan(task_id: int, db: Session = Depends(get_db)) -> RenderPlanRead:
+def build_render_plan(
+    task_id: int, request: Request, db: Session = Depends(get_db)
+) -> RenderPlanRead:
+    task = db.get(GenerationTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    ensure_task_access(task, request, db)
     return build_render_plan_for_task(db=db, task_id=task_id)
 
 
@@ -3133,15 +3167,24 @@ def compose_render_clips(
 
 
 @router.post("/tasks/{task_id}/render", response_model=OutputVideoRead)
-def render_task(task_id: int, db: Session = Depends(get_db)) -> OutputVideoRead:
+def render_task(
+    task_id: int, request: Request, db: Session = Depends(get_db)
+) -> OutputVideoRead:
+    task = db.get(GenerationTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    ensure_task_access(task, request, db)
     return render_task_output(db=db, task_id=task_id)
 
 
 @router.post("/tasks/{task_id}/enqueue", response_model=GenerationTaskRead)
-def enqueue_task(task_id: int, db: Session = Depends(get_db)) -> GenerationTaskRead:
+def enqueue_task(
+    task_id: int, request: Request, db: Session = Depends(get_db)
+) -> GenerationTaskRead:
     task = db.get(GenerationTask, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+    ensure_task_access(task, request, db)
     mark_task_progress(
         db=db,
         task=task,
@@ -3361,13 +3404,20 @@ def has_transformations(transformations_spec: Optional[dict] = None) -> bool:
 @router.post("/tasks/{task_id}/run", response_model=TaskRunResponse)
 def run_task_pipeline(
     task_id: int,
+    request: Request,
     payload: Optional[TaskRunRequest] = None,
     db: Session = Depends(get_db),
 ) -> TaskRunResponse:
     task = db.get(GenerationTask, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+    ensure_task_access(task, request, db)
+    return run_task_pipeline_for_task(db=db, task=task, payload=payload)
 
+
+def run_task_pipeline_for_task(
+    db: Session, task: GenerationTask, payload: Optional[TaskRunRequest] = None
+) -> TaskRunResponse:
     template_spec = template_spec_for_task(task)
     segment_seconds = (
         payload.segment_seconds
@@ -3416,7 +3466,7 @@ def run_queued_task_pipeline(task_id: int) -> None:
         if task is None:
             return
         try:
-            run_task_pipeline(task_id=task_id, payload=None, db=db)
+            run_task_pipeline_for_task(db=db, task=task, payload=None)
         except Exception as exc:
             db.rollback()
             task = db.get(GenerationTask, task_id)
@@ -3528,8 +3578,12 @@ def select_segments_for_template(
 
 
 @router.get("/outputs", response_model=List[OutputVideoRead])
-def list_outputs(db: Session = Depends(get_db)) -> List[OutputVideoRead]:
-    return list(db.scalars(select(OutputVideo).order_by(OutputVideo.created_at.desc())))
+def list_outputs(request: Request, db: Session = Depends(get_db)) -> List[OutputVideoRead]:
+    query = select(OutputVideo).join(GenerationTask)
+    user = optional_user_from_request(request, db)
+    if user is not None:
+        query = query.where(GenerationTask.user_id == user.id)
+    return list(db.scalars(query.order_by(OutputVideo.created_at.desc())))
 
 
 @router.get("/outputs/review", response_model=List[OutputReviewRead])
@@ -3545,10 +3599,13 @@ def list_outputs_for_review(
 
 
 @router.get("/outputs/{output_id}/file")
-def get_output_file(output_id: int, db: Session = Depends(get_db)) -> FileResponse:
+def get_output_file(
+    output_id: int, request: Request, db: Session = Depends(get_db)
+) -> FileResponse:
     output = db.get(OutputVideo, output_id)
     if output is None:
         raise HTTPException(status_code=404, detail="Output video not found")
+    ensure_output_access(output, request, db)
     path = Path(output.file_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Output file not found")
@@ -3556,22 +3613,23 @@ def get_output_file(output_id: int, db: Session = Depends(get_db)) -> FileRespon
 
 
 def approved_outputs_for_production_run(
-    db: Session, production_run_id: int
+    db: Session, production_run_id: int, user_id: Optional[int] = None
 ) -> List[OutputVideo]:
-    return list(
-        db.scalars(
-            select(OutputVideo)
-            .join(GenerationTask)
-            .where(GenerationTask.production_run_id == production_run_id)
-            .where(OutputVideo.status == OutputVideoStatus.READY.value)
-            .where(OutputVideo.review_status == ReviewStatus.APPROVED.value)
-            .order_by(OutputVideo.created_at.asc(), OutputVideo.id.asc())
-        )
+    query = (
+        select(OutputVideo)
+        .join(GenerationTask)
+        .where(GenerationTask.production_run_id == production_run_id)
+        .where(OutputVideo.status == OutputVideoStatus.READY.value)
+        .where(OutputVideo.review_status == ReviewStatus.APPROVED.value)
+        .order_by(OutputVideo.created_at.asc(), OutputVideo.id.asc())
     )
+    if user_id is not None:
+        query = query.where(GenerationTask.user_id == user_id)
+    return list(db.scalars(query))
 
 
 def production_run_package_estimate(
-    db: Session, production_run: ProductionRun
+    db: Session, production_run: ProductionRun, user_id: Optional[int] = None
 ) -> ProductionRunPackageEstimate:
     seed_path = Path(production_run.asset.file_path)
     missing_files = []
@@ -3581,7 +3639,7 @@ def production_run_package_estimate(
     else:
         missing_files.append(production_run.asset.original_filename)
 
-    approved_outputs = approved_outputs_for_production_run(db, production_run.id)
+    approved_outputs = approved_outputs_for_production_run(db, production_run.id, user_id)
     approved_size = 0
     for output in approved_outputs:
         output_path = Path(output.file_path)
@@ -3615,29 +3673,38 @@ def safe_archive_name(value: str) -> str:
     response_model=ProductionRunPackageEstimate,
 )
 def estimate_production_run_package(
-    production_run_id: int, db: Session = Depends(get_db)
+    production_run_id: int, request: Request, db: Session = Depends(get_db)
 ) -> ProductionRunPackageEstimate:
     production_run = db.get(ProductionRun, production_run_id)
     if production_run is None:
         raise HTTPException(status_code=404, detail="Production run not found")
-    return production_run_package_estimate(db=db, production_run=production_run)
+    user = ensure_production_run_access(production_run, request, db)
+    return production_run_package_estimate(
+        db=db,
+        production_run=production_run,
+        user_id=user.id if user else None,
+    )
 
 
 @router.get("/production-runs/{production_run_id}/package")
 def download_production_run_package(
-    production_run_id: int, db: Session = Depends(get_db)
+    production_run_id: int, request: Request, db: Session = Depends(get_db)
 ) -> FileResponse:
     production_run = db.get(ProductionRun, production_run_id)
     if production_run is None:
         raise HTTPException(status_code=404, detail="Production run not found")
-    estimate = production_run_package_estimate(db=db, production_run=production_run)
+    user = ensure_production_run_access(production_run, request, db)
+    user_id = user.id if user else None
+    estimate = production_run_package_estimate(
+        db=db, production_run=production_run, user_id=user_id
+    )
     if estimate.approved_output_count == 0:
         raise HTTPException(status_code=400, detail="Production run has no approved videos")
 
     package_dir = storage_root() / "temp" / "packages"
     package_dir.mkdir(parents=True, exist_ok=True)
     package_path = package_dir / f"{estimate.package_name}.zip"
-    approved_outputs = approved_outputs_for_production_run(db, production_run.id)
+    approved_outputs = approved_outputs_for_production_run(db, production_run.id, user_id)
     seed_path = Path(production_run.asset.file_path)
     if not seed_path.exists():
         raise HTTPException(status_code=404, detail="Seed video file not found")
@@ -3711,11 +3778,13 @@ def download_production_run_package(
 def update_production_run_status(
     production_run_id: int,
     payload: ProductionRunStatusUpdate,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
     production_run = db.get(ProductionRun, production_run_id)
     if production_run is None:
         raise HTTPException(status_code=404, detail="Production run not found")
+    ensure_production_run_access(production_run, request, db)
     allowed_statuses = {
         ProductionRunStatus.IN_REVIEW.value,
         ProductionRunStatus.NEEDS_REVISION.value,
@@ -3736,28 +3805,36 @@ def update_production_run_status(
 
 
 @router.get("/assets/{asset_id}/outputs", response_model=List[OutputReviewRead])
-def list_asset_outputs(asset_id: int, db: Session = Depends(get_db)) -> List[OutputReviewRead]:
+def list_asset_outputs(
+    asset_id: int, request: Request, db: Session = Depends(get_db)
+) -> List[OutputReviewRead]:
     asset = db.get(Asset, asset_id)
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
-    outputs = list(
-        db.scalars(
-            select(OutputVideo)
-            .join(GenerationTask)
-            .where(GenerationTask.asset_id == asset_id)
-            .order_by(OutputVideo.created_at.desc())
-        )
+    query = (
+        select(OutputVideo)
+        .join(GenerationTask)
+        .where(GenerationTask.asset_id == asset_id)
+        .order_by(OutputVideo.created_at.desc())
     )
+    user = optional_user_from_request(request, db)
+    if user is not None:
+        query = query.where(GenerationTask.user_id == user.id)
+    outputs = list(db.scalars(query))
     return [output_review_payload(output) for output in outputs]
 
 
 @router.patch("/outputs/{output_id}/review", response_model=OutputReviewRead)
 def update_output_review(
-    output_id: int, payload: OutputReviewUpdate, db: Session = Depends(get_db)
+    output_id: int,
+    payload: OutputReviewUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
 ) -> OutputReviewRead:
     output = db.get(OutputVideo, output_id)
     if output is None:
         raise HTTPException(status_code=404, detail="Output video not found")
+    ensure_output_access(output, request, db)
 
     valid_statuses = {status.value for status in ReviewStatus}
     if payload.review_status not in valid_statuses:

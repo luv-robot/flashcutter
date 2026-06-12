@@ -1472,6 +1472,175 @@ def test_render_variants_for_asset(monkeypatch) -> None:
     assert run_status_response.json()["status"] == "needs_revision"
 
 
+def test_generated_outputs_are_scoped_to_owner(monkeypatch) -> None:
+    def fake_probe_media(path: Path) -> dict:
+        return {
+            "duration_seconds": 6.0,
+            "width": 1280,
+            "height": 720,
+            "fps": 30.0,
+        }
+
+    def fake_split_fixed_segments(source_path, output_dir, duration_seconds, segment_seconds):
+        segment = output_dir / "0001.mp4"
+        segment.write_bytes(b"segment-1")
+        return [
+            {
+                "index": 0,
+                "start_time": 0.0,
+                "end_time": 3.0,
+                "duration_seconds": 3.0,
+                "file_path": str(segment),
+            }
+        ]
+
+    def fake_render_timeline(
+        segment_paths,
+        concat_file,
+        output_path,
+        width=None,
+        height=None,
+        fps=None,
+        fit="original",
+        transformations=None,
+    ):
+        output_path.write_bytes(b"owner-output-video")
+
+    def fake_render_concat(segment_paths, concat_file, output_path):
+        output_path.write_bytes(b"owner-output-video")
+
+    monkeypatch.setattr(routes, "probe_media", fake_probe_media)
+    monkeypatch.setattr(routes, "split_fixed_segments", fake_split_fixed_segments)
+    monkeypatch.setattr(routes, "render_concat", fake_render_concat)
+    monkeypatch.setattr(routes, "render_timeline", fake_render_timeline)
+
+    with TestClient(app) as client:
+        owner_response = client.post(
+            "/api/auth/register",
+            json={
+                "phone": unique_phone(),
+                "password": "trial-secret",
+                "display_name": "Owner",
+            },
+        )
+        other_response = client.post(
+            "/api/auth/register",
+            json={
+                "phone": unique_phone(),
+                "password": "trial-secret",
+                "display_name": "Other",
+            },
+        )
+        owner_token = owner_response.json()["access_token"]
+        other_token = other_response.json()["access_token"]
+        owner_headers = {"Authorization": f"Bearer {owner_token}"}
+        other_headers = {"Authorization": f"Bearer {other_token}"}
+
+        template_id = client.get("/api/templates", headers=owner_headers).json()[0]["id"]
+        upload_response = client.post(
+            "/api/assets/upload",
+            headers=owner_headers,
+            files={"file": ("owner-source.mp4", b"fake-video", "video/mp4")},
+        )
+        asset_id = upload_response.json()["id"]
+
+        render_response = client.post(
+            f"/api/assets/{asset_id}/render-variants",
+            headers=owner_headers,
+            json={
+                "name_prefix": "owner-only",
+                "template_ids": [template_id],
+                "params_json": {},
+            },
+        )
+        assert render_response.status_code == 200
+        output = render_response.json()[0]
+        output_id = output["output_id"]
+        task_id = output["task_id"]
+        production_run_id = output["production_run_id"]
+
+        approve_response = client.patch(
+            f"/api/outputs/{output_id}/review",
+            headers=owner_headers,
+            json={"review_status": "approved", "review_notes": "Owner approved."},
+        )
+        assert approve_response.status_code == 200
+
+        assert any(
+            item["id"] == task_id
+            for item in client.get("/api/tasks", headers=owner_headers).json()
+        )
+        assert any(
+            item["id"] == output_id
+            for item in client.get("/api/outputs", headers=owner_headers).json()
+        )
+        assert client.get(
+            f"/api/outputs/{output_id}/file", headers=owner_headers
+        ).status_code == 200
+        assert client.get(
+            f"/api/outputs/{output_id}/file?access_token={owner_token}"
+        ).status_code == 200
+        assert client.get(
+            f"/api/production-runs/{production_run_id}/package/estimate",
+            headers=owner_headers,
+        ).status_code == 200
+        assert client.get(
+            f"/api/production-runs/{production_run_id}/package",
+            headers=owner_headers,
+        ).status_code == 200
+
+        assert all(
+            item["id"] != task_id
+            for item in client.get("/api/tasks", headers=other_headers).json()
+        )
+        assert all(
+            item["id"] != output_id
+            for item in client.get("/api/outputs", headers=other_headers).json()
+        )
+        assert all(
+            item["output_id"] != output_id
+            for item in client.get("/api/outputs/review", headers=other_headers).json()
+        )
+        assert all(
+            item["output_id"] != output_id
+            for item in client.get(
+                f"/api/assets/{asset_id}/outputs", headers=other_headers
+            ).json()
+        )
+
+        forbidden_requests = [
+            ("get", f"/api/tasks/{task_id}/events", None),
+            ("post", f"/api/tasks/{task_id}/render-plan", None),
+            ("post", f"/api/tasks/{task_id}/render", None),
+            ("post", f"/api/tasks/{task_id}/enqueue", None),
+            ("post", f"/api/tasks/{task_id}/run", None),
+            ("get", f"/api/outputs/{output_id}/file", None),
+            (
+                "patch",
+                f"/api/outputs/{output_id}/review",
+                {"review_status": "rejected", "review_notes": "Should not work."},
+            ),
+            ("get", f"/api/production-runs/{production_run_id}/package/estimate", None),
+            ("get", f"/api/production-runs/{production_run_id}/package", None),
+            (
+                "patch",
+                f"/api/production-runs/{production_run_id}/status",
+                {"status": "needs_revision"},
+            ),
+        ]
+        for method, path, body in forbidden_requests:
+            if body is None:
+                response = getattr(client, method)(path, headers=other_headers)
+            else:
+                response = getattr(client, method)(path, headers=other_headers, json=body)
+            assert response.status_code == 404, path
+
+        query_token_response = client.get(
+            f"/api/outputs/{output_id}/file?access_token={other_token}"
+        )
+        assert query_token_response.status_code == 404
+
+
 def test_template_transformations_are_recorded_and_rendered(monkeypatch) -> None:
     template_name = f"creative-transform-{uuid4().hex}"
     captured_render = {}
