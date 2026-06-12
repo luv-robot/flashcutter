@@ -222,6 +222,30 @@ main {
   color: var(--muted);
 }
 
+.topbar-actions {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.topbar-link {
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 0.45rem 0.72rem;
+  background: #ffffff;
+  color: var(--text);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.topbar-link:hover {
+  border-color: #a8a8a8;
+  background: #f7f7f7;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1422,6 +1446,18 @@ dd {
   border-radius: 8px;
   padding: 0.68rem;
   background: #f8fafc;
+}
+
+.auth-help a {
+  display: inline-flex;
+  margin-left: 0.45rem;
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.auth-help a:hover {
+  text-decoration: underline;
 }
 
 .user-block {

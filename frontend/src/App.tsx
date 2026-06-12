@@ -252,7 +252,12 @@ export default function App() {
             <h2>{currentView.label}</h2>
             <p>{currentView.description}</p>
           </div>
-          <button className="secondary-action" onClick={guardedRefresh}>刷新全部</button>
+          <div className="topbar-actions">
+            <a className="topbar-link" href="/operator-user-guide.html" target="_blank" rel="noreferrer">
+              使用手册
+            </a>
+            <button className="secondary-action" onClick={guardedRefresh}>刷新全部</button>
+          </div>
         </header>
         {error && <div className="error-banner">{error}</div>}
         {loading ? (
@@ -448,6 +453,7 @@ function AuthGate({
         ) : (
           <p className="auth-help">
             当前试用环境暂不开放自助注册。如需新账号，请联系管理员分配。
+            <a href="/operator-user-guide.html" target="_blank" rel="noreferrer">查看使用手册</a>
           </p>
         )}
       </section>
