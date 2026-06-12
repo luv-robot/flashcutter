@@ -10,11 +10,13 @@ import {
   templateSummary,
   templateTitle
 } from '../api/templateDisplay';
-import type { MusicTrack, Template } from '../api/types';
+import { templateUsageStats } from '../api/templateInsights';
+import type { MusicTrack, OutputReview, Template } from '../api/types';
 import { JsonBlock } from '../components/JsonBlock';
 
 type TemplatesPageProps = {
   templates: Template[];
+  outputs: OutputReview[];
   onRefresh: () => Promise<void>;
 };
 
@@ -142,7 +144,7 @@ const outputPresetOptions = [
   }
 ];
 
-export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
+export function TemplatesPage({ templates, outputs, onRefresh }: TemplatesPageProps) {
   const [name, setName] = useState('vertical-fast-hook');
   const [description, setDescription] = useState('9:16 短视频钩子变体。');
   const [jsonSpec, setJsonSpec] = useState(JSON.stringify(defaultTemplate, null, 2));
@@ -1005,6 +1007,7 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
         <div className="template-list">
           {templates.map((template) => {
             const requiredFields = templateRequiredFieldLabels(template);
+            const stats = templateUsageStats(template, outputs);
             return (
               <article key={template.id} className="template-item solution-package-card">
                 <div>
@@ -1037,7 +1040,17 @@ export function TemplatesPage({ templates, onRefresh }: TemplatesPageProps) {
                       label="审核重点"
                       value={reviewChecklistSummary(template)}
                     />
+                    <TemplateSummaryCell
+                      label="历史表现"
+                      value={templateStatsSummary(stats)}
+                    />
                   </div>
+                  {stats.topFeedbackReasons.length > 0 && (
+                    <div className="template-feedback-summary">
+                      <span>常见修改原因</span>
+                      <strong>{stats.topFeedbackReasons.join('；')}</strong>
+                    </div>
+                  )}
                   <div className="button-row">
                     <button onClick={() => editTemplate(template)}>编辑方案包</button>
                   </div>
@@ -1077,6 +1090,13 @@ function TemplateSummaryCell({ label, value }: { label: string; value: string })
       <strong>{value}</strong>
     </div>
   );
+}
+
+function templateStatsSummary(stats: ReturnType<typeof templateUsageStats>) {
+  if (stats.generatedCount === 0) return '暂无当前账号历史';
+  const passRate = stats.passRate == null ? '-' : `${Math.round(stats.passRate * 100)}%`;
+  const issueCount = stats.needsChangesCount + stats.rejectedCount + stats.discardedCount;
+  return `${stats.generatedCount} 条生成 · ${stats.approvedCount} 条通过 · 通过率 ${passRate} · ${issueCount} 条需处理`;
 }
 
 function isArrayIndex(value: string): boolean {

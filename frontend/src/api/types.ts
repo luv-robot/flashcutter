@@ -4,6 +4,10 @@ export type Asset = {
   stored_filename: string;
   file_path: string;
   status: string;
+  duration_seconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  fps?: number | null;
   created_at: string;
 };
 

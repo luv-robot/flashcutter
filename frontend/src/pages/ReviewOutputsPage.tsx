@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, assetFileUrl, outputFileUrl, productionRunPackageUrl } from '../api/client';
+import { reviewNextRoundAdvice } from '../api/templateInsights';
 import type { Asset, OutputReview } from '../api/types';
 import { JsonBlock } from '../components/JsonBlock';
 import { StatusBadge } from '../components/StatusBadge';
@@ -148,6 +149,9 @@ export function ReviewOutputsPage({
     reviewGroups.find((group) => group.key === selectedGroupKey) ?? reviewGroups[0] ?? null;
   const nextPendingOutput = nextReviewableOutput(selectedGroup?.outputs ?? [], selected);
   const selectedGroupStats = selectedGroup ? reviewGroupStats(selectedGroup.outputs) : null;
+  const nextRoundAdvice = selectedGroup
+    ? reviewNextRoundAdvice(selectedGroup.outputs)
+    : null;
 
   useEffect(() => {
     if (focusedAssetId) {
@@ -652,6 +656,22 @@ export function ReviewOutputsPage({
                 </div>
               )}
             </div>
+            {nextRoundAdvice && nextRoundAdvice.totalFeedbackCount > 0 && (
+              <div className="next-round-advice">
+                <div>
+                  <span>下一轮建议</span>
+                  <strong>
+                    已记录 {nextRoundAdvice.totalFeedbackCount} 条结构化反馈
+                    {nextRoundAdvice.topReasons.length ? ` · ${nextRoundAdvice.topReasons.join('，')}` : ''}
+                  </strong>
+                </div>
+                <ul>
+                  {nextRoundAdvice.recommendations.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {selected.reviewed_at && (
               <p className="notice">
                 最近审核：{new Date(selected.reviewed_at).toLocaleString()}

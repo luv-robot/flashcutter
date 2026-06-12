@@ -298,7 +298,7 @@ export default function App() {
               />
             )}
             {view === 'templates' && (
-              <TemplatesPage templates={templates} onRefresh={guardedRefresh} />
+              <TemplatesPage templates={templates} outputs={outputs} onRefresh={guardedRefresh} />
             )}
             {view === 'production' && (
               <CreateVariantsPage

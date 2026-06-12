@@ -11,6 +11,11 @@ import {
   templateSummary,
   templateTitle
 } from '../api/templateDisplay';
+import {
+  assetHealth,
+  templateRecommendation,
+  type TemplateRecommendationLevel
+} from '../api/templateInsights';
 import type {
   AIAsset,
   Asset,
@@ -108,6 +113,7 @@ export function CreateVariantsPage({
   const [productionMode, setProductionMode] = useState<ProductionMode>('one_asset_many_templates');
   const [namePrefix, setNamePrefix] = useState('batch-video-variant');
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<number[]>([]);
+  const [templateFitFilter, setTemplateFitFilter] = useState<TemplateRecommendationLevel | 'all'>('all');
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
   const [templateFilter, setTemplateFilter] = useState('');
   const [assetSearch, setAssetSearch] = useState('');
@@ -172,6 +178,33 @@ export function CreateVariantsPage({
       return haystack.includes(needle);
     });
   }, [templates, templateFilter]);
+  const selectedAssetHealth = useMemo(
+    () => assetHealth(selectedAsset, outputPresetId),
+    [outputPresetId, selectedAsset]
+  );
+  const templateRecommendations = useMemo(() => {
+    return new Map(
+      filteredTemplates.map((template) => [
+        template.id,
+        templateRecommendation(template, selectedAsset, outputPresetId)
+      ])
+    );
+  }, [filteredTemplates, outputPresetId, selectedAsset]);
+  const recommendationCounts = useMemo(() => {
+    const counts: Record<TemplateRecommendationLevel, number> = {
+      recommended: 0,
+      try: 0,
+      caution: 0
+    };
+    templateRecommendations.forEach((recommendation) => {
+      counts[recommendation.level] += 1;
+    });
+    return counts;
+  }, [templateRecommendations]);
+  const visibleTemplates = filteredTemplates.filter((template) => {
+    if (templateFitFilter === 'all') return true;
+    return templateRecommendations.get(template.id)?.level === templateFitFilter;
+  });
   const filteredAssets = useMemo(() => {
     const needle = assetSearch.trim().toLowerCase();
     return assets.filter((asset) => {
@@ -303,6 +336,32 @@ export function CreateVariantsPage({
       setMatrixPreflight(null);
       return next;
     });
+  }
+
+  function selectRecommendedTemplates() {
+    const ranked = filteredTemplates
+      .map((template) => ({
+        template,
+        recommendation: templateRecommendations.get(template.id)
+      }))
+      .filter((item) => Boolean(item.recommendation))
+      .map((item) => ({ template: item.template, recommendation: item.recommendation! }))
+      .sort((left, right) => right.recommendation.score - left.recommendation.score);
+    const preferred = ranked.filter((item) => item.recommendation.level === 'recommended');
+    const fallback = ranked.filter((item) => item.recommendation.level === 'try');
+    const picks = (preferred.length ? preferred : fallback).slice(
+      0,
+      productionMode === 'many_assets_one_template' ? 1 : 3
+    );
+    setSelectedTemplateIds(picks.map((item) => item.template.id));
+    setTemplateFitFilter(preferred.length ? 'recommended' : 'try');
+    setPreflight(null);
+    setMatrixPreflight(null);
+    setStatusMessage(
+      picks.length
+        ? `已选择 ${picks.length} 个推荐方案包，仍建议先运行预检。`
+        : '当前筛选下没有推荐方案包，请清空筛选或手动选择。'
+    );
   }
 
   async function refreshPreflight(nextTemplateIds = preflightTemplateIds) {
@@ -1072,6 +1131,28 @@ export function CreateVariantsPage({
 
               {step === 'templates' && (
                 <div className="template-picker-view">
+                  <div className={`asset-health-panel asset-health-${selectedAssetHealth.status}`}>
+                    <div>
+                      <span className="asset-health-status">{selectedAssetHealth.summary}</span>
+                      <strong>
+                        {selectedAsset
+                          ? `${selectedAsset.original_filename} 的方案推荐`
+                          : '选择素材后推荐方案包'}
+                      </strong>
+                      <p>{selectedAssetHealth.facts.join(' · ')}</p>
+                      {selectedAssetHealth.cautions.length > 0 && (
+                        <small>{selectedAssetHealth.cautions.join('；')}</small>
+                      )}
+                    </div>
+                    <button
+                      className="primary-action"
+                      type="button"
+                      onClick={selectRecommendedTemplates}
+                      disabled={filteredTemplates.length === 0}
+                    >
+                      选择推荐方案包
+                    </button>
+                  </div>
                   <div className="template-filter-row">
                     <input
                       value={templateFilter}
@@ -1095,16 +1176,52 @@ export function CreateVariantsPage({
                       清空
                     </button>
                   </div>
+                  <div className="recommendation-filter-row" aria-label="方案包推荐筛选">
+                    <button
+                      type="button"
+                      className={templateFitFilter === 'all' ? 'selected-filter-chip' : ''}
+                      onClick={() => setTemplateFitFilter('all')}
+                    >
+                      全部 {filteredTemplates.length}
+                    </button>
+                    <button
+                      type="button"
+                      className={templateFitFilter === 'recommended' ? 'selected-filter-chip' : ''}
+                      onClick={() => setTemplateFitFilter('recommended')}
+                    >
+                      推荐 {recommendationCounts.recommended}
+                    </button>
+                    <button
+                      type="button"
+                      className={templateFitFilter === 'try' ? 'selected-filter-chip' : ''}
+                      onClick={() => setTemplateFitFilter('try')}
+                    >
+                      可尝试 {recommendationCounts.try}
+                    </button>
+                    <button
+                      type="button"
+                      className={templateFitFilter === 'caution' ? 'selected-filter-chip' : ''}
+                      onClick={() => setTemplateFitFilter('caution')}
+                    >
+                      谨慎 {recommendationCounts.caution}
+                    </button>
+                  </div>
                   <div className="template-method-grid">
-                    {filteredTemplates.length === 0 ? (
+                    {visibleTemplates.length === 0 ? (
                       <div className="empty-action-state">
-                        <p className="empty-state">没有匹配的模板方法。清空筛选或先创建一个模板方法。</p>
-                        <button className="secondary-action" type="button" onClick={() => setTemplateFilter('')}>
-                          清空筛选
-                        </button>
+                        <p className="empty-state">当前筛选下没有匹配的方案包。清空推荐筛选或关键词后再选。</p>
+                        <div className="button-row">
+                          <button className="secondary-action" type="button" onClick={() => setTemplateFitFilter('all')}>
+                            显示全部方案
+                          </button>
+                          <button className="secondary-action" type="button" onClick={() => setTemplateFilter('')}>
+                            清空关键词
+                          </button>
+                        </div>
                       </div>
-                    ) : filteredTemplates.map((template) => {
+                    ) : visibleTemplates.map((template) => {
                       const requiredFields = templateRequiredFieldLabels(template);
+                      const recommendation = templateRecommendations.get(template.id);
                       return (
                         <label key={template.id} className="template-method-card solution-picker-card">
                           <input
@@ -1112,7 +1229,14 @@ export function CreateVariantsPage({
                             checked={selectedTemplateIds.includes(template.id)}
                             onChange={() => toggleTemplate(template.id)}
                           />
-                          <span className="solution-category">{templatePlanCategory(template)} · {templateBadge(template)}</span>
+                          <div className="solution-card-badges">
+                            <span className="solution-category">{templatePlanCategory(template)} · {templateBadge(template)}</span>
+                            {recommendation && (
+                              <span className={`recommendation-badge recommendation-${recommendation.level}`}>
+                                {recommendationLevelLabel(recommendation.level)}
+                              </span>
+                            )}
+                          </div>
                           <strong>{templateTitle(template)}</strong>
                           <small>{templateSummary(template)}</small>
                           <div className="solution-outcome compact-outcome">
@@ -1126,6 +1250,11 @@ export function CreateVariantsPage({
                           <small>
                             需要准备：{requiredFields.length > 0 ? requiredFields.join('、') : '无需额外字段'}
                           </small>
+                          {recommendation && (
+                            <small className="recommendation-reason">
+                              {recommendation.reasons[0] || recommendation.cautions[0] || '按预检结果确认是否适合'}
+                            </small>
+                          )}
                         </label>
                       );
                     })}
@@ -1489,6 +1618,15 @@ function TemplateFitPreview({ label, items }: { label: string; items: string[] }
       <small>{items.slice(0, 2).join('；') || '按方案说明判断'}</small>
     </div>
   );
+}
+
+function recommendationLevelLabel(level: TemplateRecommendationLevel) {
+  const labels = {
+    recommended: '推荐',
+    try: '可尝试',
+    caution: '谨慎'
+  };
+  return labels[level];
 }
 
 function RuntimeFieldControl({
